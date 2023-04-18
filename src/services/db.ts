@@ -1,6 +1,7 @@
 import { Currency, PrismaClient } from '@prisma/client'
 import { CreateTarifArguments, CreatePriceArguments, FullUser } from '../interfaces/db.js'
-import { ICode } from '../interfaces/tg.js'
+import { ICode, IReg } from '../interfaces/tg.js'
+import { info } from 'console'
 
 class DBService {
   private readonly prisma
@@ -32,9 +33,12 @@ class DBService {
     return tarifs
   }
 
-  async createUser(id: number, name: string, invite: string) {
-    const code = await this.prisma.code.findUnique({ where: { value: invite } })
+  async createUser(id: number, userInfo: IReg) {
     let tarifId = 1
+
+    const code = await this.prisma.code.findUnique({
+      where: { value: userInfo.code === 'welcome_tarif' ? 'welcome_tarif' : userInfo.code },
+    })
 
     if (code?.tarifId) {
       tarifId = code.tarifId
@@ -46,10 +50,10 @@ class DBService {
       throw new Error(`Tarif ${tarifId} does not exist!`)
     }
 
-    const user = await this.prisma.user.create({ data: { chatId: id, name } })
+    const user = await this.prisma.user.create({ data: { chatId: id, name: userInfo.name } })
     await this.prisma.token.create({ data: { userId: user.id } })
     await this.prisma.context.create({ data: { userId: user.id } })
-    await this.prisma.settings.create({ data: { userId: user.id } })
+    await this.prisma.settings.create({ data: { userId: user.id, language: userInfo.language } })
     await this.prisma.activity.create({
       data: {
         expiresIn: new Date(Date.now() + tarif.duration),
@@ -60,28 +64,32 @@ class DBService {
     return true
   }
 
-  async createTarif({
-    name,
-    title,
-    description,
-    image,
-    limit,
-    dailyLimit,
-    type,
-    maxContext,
-    duration,
-  }: CreateTarifArguments) {
+  async createTarif(
+    {
+      name,
+      title,
+      description,
+      image,
+      limit,
+      dailyLimit,
+      type,
+      maxContext,
+      duration,
+    }: CreateTarifArguments,
+    id: number,
+  ) {
     const tarif = this.prisma.tarif.create({
       data: {
         name,
         title,
         description,
         image,
-        limit,
-        dailyLimit,
+        limit: limit || 0,
+        dailyLimit: dailyLimit || 0,
         type,
         maxContext,
         duration,
+        userId: id,
       },
     })
 
@@ -145,7 +153,7 @@ class DBService {
         id: tarifId,
       },
       data: {
-        activities: {
+        activity: {
           connect: {
             id: activityId,
           },

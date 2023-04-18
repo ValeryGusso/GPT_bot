@@ -5,7 +5,7 @@ import GPTController from './gpt.js'
 import DBService from '../services/db.js'
 import { ICache, PriceCache, PriceCacheKey } from '../interfaces/tg.js'
 import { CreatePriceArguments, FullUser } from '../interfaces/db.js'
-import { Currency, TarifType } from '@prisma/client'
+import { Currency, Language, TarifType } from '@prisma/client'
 
 dotenv.config()
 
@@ -28,7 +28,7 @@ class TgController {
     this.cache.reg[id] = {
       name: name || 'Незнакомец',
       code: '',
-      lang: 'ru',
+      language: Language.ru,
       step: 1,
       updatedAt: Date.now(),
     }
@@ -200,6 +200,7 @@ class TgController {
 
   async message(msg: Message) {
     try {
+      /* PREVALIDATION */
       const { text } = msg
 
       if (!text) {
@@ -207,6 +208,7 @@ class TgController {
         return
       }
 
+      /* CHEC UTH AND REGISTRATION */
       const user = await DBService.getByChatId(msg.chat.id)
 
       const checkAuth = this.checkAuthAndRegistration(msg.chat.id, text, user, msg.from?.first_name)
@@ -214,13 +216,14 @@ class TgController {
       if (!checkAuth) {
         return
       }
-      console.log('auth')
 
+      /* RESET CONTEXT */
       if (text === '/reset') {
         GPTController.resetContext(msg.chat.id)
         return
       }
 
+      /* CREATE CODE */
       if (text === '/code' && user.isAdmin) {
         // if (text === '/code') {
         this.code(msg.chat.id, text)
@@ -232,6 +235,7 @@ class TgController {
         return
       }
 
+      /* CREATE TARIF */
       if (text === '/tarif' && user.isAdmin) {
         // if (text === '/tarif') {
         if (this.cache.tarif[msg.chat.id]) {
@@ -248,6 +252,7 @@ class TgController {
         this.tarif(msg.chat.id, text)
       }
 
+      /* SKIPP ALL ACTIONS, SEND QUESTION TO GPT */
       // TgService.sendQuestion(msg.chat.id, text, user)
     } catch (err: any) {
       TgService.sendError(
@@ -290,17 +295,20 @@ class TgController {
       const { name, title, description, image, limit, dailyLimit, type, maxContext, duration } =
         this.cache.tarif[cb.from.id]
 
-      const tarif = await DBService.createTarif({
-        name,
-        title,
-        description,
-        image,
-        limit,
-        dailyLimit,
-        type,
-        maxContext,
-        duration,
-      })
+      const tarif = await DBService.createTarif(
+        {
+          name,
+          title,
+          description,
+          image,
+          limit,
+          dailyLimit,
+          type,
+          maxContext,
+          duration,
+        },
+        cb.from.id,
+      )
 
       for (let i = 0; i < pricesId.length; ) {
         await DBService.addPrice(pricesId[i], tarif.id)
@@ -312,19 +320,11 @@ class TgController {
 
     switch (cb.data) {
       /* REGISTRATION */
-      case 'reg_lang_en':
-        this.cache.reg[cb.from.id].lang = 'en'
-        incrementRegistrationStep()
-        break
-      case 'reg_lang_ru':
-        this.cache.reg[cb.from.id].lang = 'ru'
-        incrementRegistrationStep()
-        break
       case 'reg_skip_name':
         incrementRegistrationStep()
         break
-      case 'reg_test_tarif':
-        this.cache.reg[cb.from.id].code = 'test_tarif'
+      case 'reg_welcome_tarif':
+        this.cache.reg[cb.from.id].code = 'welcome_tarif'
         incrementRegistrationStep()
         break
       case 'reg_confirm':
@@ -369,6 +369,12 @@ class TgController {
         break
     }
 
+    /* REGISTRATION LANG */
+    if (cb.data?.startsWith('reg_lang_')) {
+      this.cache.reg[cb.from.id].language = cb.data.replace('reg_lang_', '') as Language
+      incrementRegistrationStep()
+    }
+
     /* TARIF TYPE */
     if (cb.data?.startsWith('tarif_type_')) {
       const type = cb.data.replace('tarif_type_', '') as TarifType
@@ -376,7 +382,7 @@ class TgController {
       incrementTarifStep()
     }
 
-    /* TARIF ID AND NAME*/
+    /* TARIF ID AND NAME */
     if (cb.data?.startsWith('code_tarif_')) {
       this.cache.code[cb.from.id].tarifName = cb.data.replace(/^.*_(.*)_\d+$/, '$1')
       this.cache.code[cb.from.id].tarifId = parseInt(cb.data.replace(/^.*_(\d+)$/, '$1'))

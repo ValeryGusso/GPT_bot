@@ -1,4 +1,4 @@
-import { Currency, Languague, TarifType } from '@prisma/client'
+import { Currency, Language, TarifType } from '@prisma/client'
 
 export type ICache = {
   reg: RegistrationCache
@@ -17,7 +17,7 @@ export type PriceCacheKey = keyof PriceCache
 export interface IReg {
   name: string
   code: string
-  lang: Languague
+  language: Language
   step: number
   updatedAt: number
 }

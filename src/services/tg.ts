@@ -73,7 +73,7 @@ class TgService {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
-                [{ text: 'Попробовать бесплатно', callback_data: 'reg_test_tarif' }],
+                [{ text: 'Попробовать бесплатно', callback_data: 'reg_welcome_tarif' }],
               ],
             },
           },
@@ -86,7 +86,7 @@ class TgService {
           error
             ? `Верно ли указаны следующие данные?
           \nТебя зовут: ${info.name}
-          \nЯзык: ${info.lang}
+          \nЯзык: ${info.language}
           \n${
             info.code === 'test_tarif'
               ? 'Активировать пробный тариф'
@@ -94,7 +94,7 @@ class TgService {
           }`
             : `Спасибо!\nМы практически закончили! Осталось только убедиться, что мы всё правильно записали, давай проверим ещё раз:
           \nТебя зовут: ${info.name}
-          \nЯзык: ${info.lang}
+          \nЯзык: ${info.language}
           \n${
             info.code === 'test_tarif'
               ? 'Активировать пробный тариф'
@@ -113,6 +113,7 @@ class TgService {
         break
 
       case 5:
+        await DBService.createUser(id, info)
         this.bot.sendMessage(
           id,
           'Регистрация прошла успешно, поздравляю! Теперь тебе доступны все функции бота!',

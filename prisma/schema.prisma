@@ -43,6 +43,7 @@ model Settings {
   topP        Float    @default(0.7)
   model       String   @default("gpt-3.5-turbo")
   serviceInfo String   @default("")
+  language    Language 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      Int      @unique
   createtAt   DateTime @default(now())
@@ -144,4 +145,9 @@ enum Currency {
 enum TarifType {
   limit
   subscribe
+}
+
+enum Language {
+  ru
+  en
 }

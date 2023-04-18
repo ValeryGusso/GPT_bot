@@ -1,11 +1,8 @@
-export enum ROLE {
-  USER = 'user',
-  ASSISTANT = 'assistant',
-}
+import { MessageRole } from '@prisma/client'
 
 export interface AnswerData {
   message: {
-    role: ROLE.ASSISTANT
+    role: MessageRole
     content: string
   }
   finish_reason: string

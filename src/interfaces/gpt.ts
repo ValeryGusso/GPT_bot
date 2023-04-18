@@ -1,11 +1,11 @@
-import { ROLE } from './API.js'
+import { MessageRole } from '@prisma/client'
 
 export interface ISession {
   [key: string]: ISessionItem[]
 }
 
 export interface ISessionItem {
-  role: ROLE
+  role: MessageRole
   content: string
 }
 

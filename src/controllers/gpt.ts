@@ -1,7 +1,8 @@
 import { AxiosInstance } from 'axios'
 import API from '../API/API.js'
-import { GPTResponse, ROLE } from '../interfaces/API.js'
+import { GPTResponse } from '../interfaces/API.js'
 import { IResult, ISession, ISessionItem } from '../interfaces/gpt.js'
+import { MessageRole } from '@prisma/client'
 
 class GPTController {
   private readonly API
@@ -39,7 +40,7 @@ class GPTController {
       model: 'gpt-3.5-turbo',
       messages: [
         {
-          role: ROLE.USER,
+          role: MessageRole.user,
           content: msg,
         },
       ],
@@ -60,7 +61,7 @@ class GPTController {
   }
 
   async sendWithContext(msg: string, id: number) {
-    const item: ISessionItem = { role: ROLE.USER, content: msg }
+    const item: ISessionItem = { role: MessageRole.user, content: msg }
 
     if (this.currentSessions[id]) {
       this.currentSessions[id].push(item)
@@ -79,7 +80,7 @@ class GPTController {
 
     if (res.status === 200) {
       this.currentSessions[id].push({
-        role: res.data.choices[0].message.role,
+        role: res.data.choices[0].message.role as MessageRole,
         content: this.safeMarkdown(res.data.choices[0].message.content),
       })
 
