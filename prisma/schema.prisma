@@ -38,25 +38,26 @@ model Activity {
 }
 
 model Settings {
-  id            Int      @id @default(autoincrement())
-  temperature   Float    @default(0.7)
-  topP          Float    @default(0.7)
-  model         String   @default("gpt-3.5-turbo")
-  context       Boolean  @default(false)
-  contextLength Int      @default(10) @db.SmallInt
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId        Int      @unique
-  createtAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  temperature Float    @default(0.7)
+  topP        Float    @default(0.7)
+  model       String   @default("gpt-3.5-turbo")
+  serviceInfo String   @default("")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int      @unique
+  createtAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Context {
-  id        Int       @id @default(autoincrement())
-  value     Message[]
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    Int       @unique
-  createtAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id         Int       @id @default(autoincrement())
+  useContext Boolean   @default(false)
+  value      Message[]
+  length     Int       @default(10) @db.SmallInt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int       @unique
+  createtAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
 model Message {
@@ -72,7 +73,6 @@ model Message {
 model Token {
   id        Int      @id @default(autoincrement())
   token     String   @unique @default(uuid())
-  expiresIn DateTime
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    Int      @unique
   createtAt DateTime @default(now())
@@ -82,23 +82,23 @@ model Token {
 }
 
 model Tarif {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  title       String    @unique
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  title       String     @unique
   description String
   image       String
   limit       Int
   dailyLimit  Int
-  maxContext  Int       @db.SmallInt
-  duration    Int       @default(2592000000)
+  maxContext  Int        @db.SmallInt
+  duration    Int        @default(2592000000)
   type        TarifType
   price       Price[]
   code        Code[]
   activity    Activity[]
-  User        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      Int       @unique
-  createtAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  User        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int        @unique
+  createtAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@unique([id, name, title])
 }
@@ -107,6 +107,7 @@ model Code {
   id        Int      @id @default(autoincrement())
   value     String   @unique
   limit     Int      @db.SmallInt
+  expiresIn DateTime @default(dbgenerated("NOW() + interval '1 month'"))
   createtAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   Tarif     Tarif?   @relation(fields: [tarifId], references: [id])
@@ -119,10 +120,12 @@ model Price {
   id        Int      @id @default(autoincrement())
   value     Int
   currency  Currency
+  tarif     Tarif?   @relation(fields: [tarifId], references: [id], onDelete: Cascade)
   tarifId   Int?
   createtAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  tarif     Tarif?   @relation(fields: [tarifId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tarifId])
 }
 
 enum MessageRole {
