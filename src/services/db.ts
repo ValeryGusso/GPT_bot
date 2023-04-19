@@ -7,16 +7,17 @@ class DBService {
   private readonly prisma
   constructor() {
     this.prisma = new PrismaClient()
+    this.prisma.$connect()
   }
 
   async getByChatId(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { chatId: id },
       include: {
+        activity: { include: { tarif: true } },
         settings: true,
         context: { include: { value: true } },
         token: true,
-        activity: { include: { tarif: true } },
       },
       // rejectOnNotFound: false,
     })
@@ -36,15 +37,20 @@ class DBService {
   async createUser(id: number, userInfo: IReg) {
     let tarifId = 1
 
-    const code = await this.prisma.code.findUnique({
-      where: { value: userInfo.code === 'welcome_tarif' ? 'welcome_tarif' : userInfo.code },
-    })
+    if (userInfo.code === 'welcome') {
+      const code = await this.prisma.code.findUnique({
+        where: { value: userInfo.code },
+      })
 
-    if (code?.tarifId) {
-      tarifId = code.tarifId
+      if (code?.tarifId) {
+        tarifId = code.tarifId
+      }
     }
 
-    const tarif = await this.prisma.tarif.findUnique({ where: { id: tarifId } })
+    const tarif =
+      userInfo.code === 'welcome'
+        ? await this.prisma.tarif.findUnique({ where: { id: tarifId } })
+        : await this.prisma.tarif.findUnique({ where: { name: userInfo.code } })
 
     if (!tarif) {
       throw new Error(`Tarif ${tarifId} does not exist!`)
@@ -64,43 +70,40 @@ class DBService {
     return true
   }
 
-  async createTarif(
-    {
-      name,
-      title,
-      description,
-      image,
-      limit,
-      dailyLimit,
-      type,
-      maxContext,
-      duration,
-    }: CreateTarifArguments,
-    id: number,
-  ) {
+  async createTarif({
+    name,
+    title,
+    description,
+    image,
+    limit,
+    dailyLimit,
+    type,
+    maxContext,
+    duration,
+  }: CreateTarifArguments) {
     const tarif = this.prisma.tarif.create({
       data: {
         name,
         title,
         description,
         image,
-        limit: limit || 0,
-        dailyLimit: dailyLimit || 0,
+        limit: limit,
+        dailyLimit,
         type,
         maxContext,
         duration,
-        userId: id,
       },
     })
 
     return tarif
   }
 
-  async createPrice(price: number, currency: Currency) {
-    const item = await this.prisma.price.create({ data: { value: price, currency } })
+  async createPrice(price: number, currency: Currency, tarifId: number) {
+    const item = await this.prisma.price.create({ data: { value: price, currency, tarifId } })
 
     return item
   }
+
   async createPrices(arr: CreatePriceArguments[]) {
     await this.prisma.price.createMany({ data: arr })
 
@@ -108,9 +111,9 @@ class DBService {
   }
 
   async createCode(code: ICode) {
-    // await this.prisma.code.create({
-    //   data: { value: code.value, limit: code.limit, tarifId: code.tarifId },
-    // })
+    await this.prisma.code.create({
+      data: { value: code.value, limit: code.limit, tarifId: code.tarifId },
+    })
   }
 
   async addPrice(priceId: number, tarifId: number) {

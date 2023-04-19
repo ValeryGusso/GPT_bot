@@ -5,11 +5,11 @@ export interface CreateTarifArguments {
   title: string
   description: string
   image: string
-  limit?: number
-  dailyLimit?: number
-  type: TarifType
+  limit: number
+  dailyLimit: number
   maxContext: number
-  duration?: number
+  duration: number
+  type: TarifType
 }
 
 export interface CreatePriceArguments {
@@ -19,9 +19,9 @@ export interface CreatePriceArguments {
 
 export type FullUser = Prisma.UserGetPayload<{
   include: {
+    activity: { include: { tarif: true } }
     settings: true
     context: { include: { value: true } }
     token: true
-    activity: { include: { tarif: true } }
   }
 }>

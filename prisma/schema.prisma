@@ -13,11 +13,10 @@ model User {
   name      String
   isAdmin   Boolean   @default(false)
   isBanned  Boolean   @default(false)
-  context   Context?
-  settings  Settings?
-  tarif     Tarif?
-  token     Token?
   activity  Activity?
+  settings  Settings?
+  context   Context?
+  token     Token?
   createtAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -41,9 +40,8 @@ model Settings {
   id          Int      @id @default(autoincrement())
   temperature Float    @default(0.7)
   topP        Float    @default(0.7)
-  model       String   @default("gpt-3.5-turbo")
-  serviceInfo String   @default("")
-  language    Language 
+  randomModel String   @default("gpt-3.5-turbo")
+  language    Language
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      Int      @unique
   createtAt   DateTime @default(now())
@@ -51,14 +49,15 @@ model Settings {
 }
 
 model Context {
-  id         Int       @id @default(autoincrement())
-  useContext Boolean   @default(false)
-  value      Message[]
-  length     Int       @default(10) @db.SmallInt
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     Int       @unique
-  createtAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id          Int       @id @default(autoincrement())
+  useContext  Boolean   @default(false)
+  value       Message[]
+  length      Int       @default(10) @db.SmallInt
+  serviceInfo String    @default("")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int       @unique
+  createtAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model Message {
@@ -96,8 +95,6 @@ model Tarif {
   price       Price[]
   code        Code[]
   activity    Activity[]
-  User        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      Int        @unique
   createtAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -109,10 +106,10 @@ model Code {
   value     String   @unique
   limit     Int      @db.SmallInt
   expiresIn DateTime @default(dbgenerated("NOW() + interval '1 month'"))
-  createtAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
   Tarif     Tarif?   @relation(fields: [tarifId], references: [id])
   tarifId   Int?
+  createtAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([id, value])
 }

@@ -63,7 +63,7 @@ class GPTController {
   async sendWithContext(msg: string, id: number) {
     const item: ISessionItem = { role: MessageRole.user, content: msg }
 
-    if (this.currentSessions[id]) {
+    if (Array.isArray(this.currentSessions[id])) {
       this.currentSessions[id].push(item)
     } else {
       this.currentSessions[id] = [item]

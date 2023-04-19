@@ -204,19 +204,26 @@ class TgService {
       case 13:
         console.log('CASE 13: ', info)
 
-        this.bot.sendMessage(id, `Тариф ${info.name} успешно создан!\nЧто делаем дальше?`, {
-          // reply_markup: {
-          //   inline_keyboard: [
-          //     [
-          //       { text: '', callback_data: '' },
-          //       { text: '', callback_data: '' },
-          //       { text: '', callback_data: '' },
-          //       { text: '', callback_data: '' },
-          //       { text: '', callback_data: '' },
-          //     ],
-          //   ],
-          // },
-        })
+        this.bot.sendMessage(
+          id,
+          `Тариф ${info.name} / ${info.title} успешно создан!
+          \nОписание: ${info.description} 
+          \nЛимиты: ${info.limit} / ${info.dailyLimit} 
+          \nМаксимальный контекст: ${info.maxContext} 
+          \nТип: ${info.type}  
+          \nДлительность: ${Math.floor(info.duration / 24 / 60 / 60 / 1000)}дней
+          \nЧто делаем дальше?`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: 'Создеть ещё 1 тариф', callback_data: 'show_menu' },
+                  { text: 'Вернуться в меню!', callback_data: 'tarif_add_new' },
+                ],
+              ],
+            },
+          },
+        )
         break
     }
   }
@@ -231,39 +238,40 @@ class TgService {
         break
 
       case 2:
-        // const tarifs = await DBService.getAllTarifs()
-        // let row = 0
-        // const buttons: InlineKeyboardButton[][] = []
-        // tarifs.forEach((tarif) => {
-        //   const index = Math.floor(5 / row)
+        const tarifs = await DBService.getAllTarifs()
+        let row = 0
+        const buttons: InlineKeyboardButton[][] = []
+        tarifs.forEach((tarif) => {
+          const index = Math.floor(5 / row)
 
-        //   if (!Array.isArray(buttons[index])) {
-        //     buttons[index] = []
-        //   }
+          if (!Array.isArray(buttons[index])) {
+            buttons[index] = []
+          }
 
-        //   buttons[index].push({
-        //     text: tarif.name,
-        //     callback_data: 'code_tarif_' + tarif.name + '_' + tarif.id,
-        //   })
+          buttons[index].push({
+            text: tarif.name,
+            callback_data: 'code_tarif_' + tarif.name + '_' + tarif.id,
+          })
 
-        //   row++
-        // })
+          row++
+        })
         await this.bot.sendMessage(id, `Выбери тариф`, {
           reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: 'Tarif',
-                  callback_data: 'code_tarif_' + 'default_1',
-                },
-              ],
-              [
-                {
-                  text: 'Moretarif',
-                  callback_data: 'code_tarif_' + 'default_2',
-                },
-              ],
-            ],
+            inline_keyboard: buttons,
+            // inline_keyboard: [
+            //   [
+            //     {
+            //       text: 'Tarif',
+            //       callback_data: 'code_tarif_' + 'default_1',
+            //     },
+            //   ],
+            //   [
+            //     {
+            //       text: 'Moretarif',
+            //       callback_data: 'code_tarif_' + 'default_2',
+            //     },
+            //   ],
+            // ],
           },
         })
         break

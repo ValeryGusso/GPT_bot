@@ -11,17 +11,21 @@ dotenv.config()
 
 class TgController {
   private cache: ICache = { reg: {}, tarif: {}, price: {} as PriceCache, code: {} }
+  private readonly cacheExpires = 60 * 60 * 1000
   private clearCache() {
-    setInterval(() => {
-      for (const key in this.cache) {
-        const curTime = Date.now()
-        const max = 60 * 60 * 1000
-        if (this.cache.reg[key] !== undefined) {
-          if (curTime - this.cache.reg[key].updatedAt > max) {
-          }
+    for (const key in this.cache) {
+      const curTime = Date.now()
+      if (this.cache.reg[key]) {
+        if (curTime - this.cache.reg[key].updatedAt > this.cacheExpires) {
         }
       }
-    }, 60 * 60 * 1000)
+    }
+  }
+
+  constructor() {
+    setInterval(() => {
+      this.clearCache()
+    }, this.cacheExpires)
   }
 
   private createCacheUser(id: number, name?: string) {
@@ -208,24 +212,24 @@ class TgController {
         return
       }
 
-      /* CHEC UTH AND REGISTRATION */
-      const user = await DBService.getByChatId(msg.chat.id)
+      // /* CHEC UTH AND REGISTRATION */
+      // const user = await DBService.getByChatId(msg.chat.id)
 
-      const checkAuth = this.checkAuthAndRegistration(msg.chat.id, text, user, msg.from?.first_name)
+      // const checkAuth = this.checkAuthAndRegistration(msg.chat.id, text, user, msg.from?.first_name)
 
-      if (!checkAuth) {
-        return
-      }
+      // if (!checkAuth) {
+      //   return
+      // }
 
-      /* RESET CONTEXT */
-      if (text === '/reset') {
-        GPTController.resetContext(msg.chat.id)
-        return
-      }
+      // /* RESET CONTEXT */
+      // if (text === '/reset') {
+      //   GPTController.resetContext(msg.chat.id)
+      //   return
+      // }
 
       /* CREATE CODE */
-      if (text === '/code' && user.isAdmin) {
-        // if (text === '/code') {
+      // if (text === '/code' && user.isAdmin) {
+      if (text === '/code') {
         this.code(msg.chat.id, text)
         return
       }
@@ -236,8 +240,8 @@ class TgController {
       }
 
       /* CREATE TARIF */
-      if (text === '/tarif' && user.isAdmin) {
-        // if (text === '/tarif') {
+      // if (text === '/tarif' && user.isAdmin) {
+      if (text === '/tarif') {
         if (this.cache.tarif[msg.chat.id]) {
           this.tarif(msg.chat.id, text)
           return
@@ -276,6 +280,23 @@ class TgController {
     }
 
     const createTarif = async () => {
+      /* CREATING TARIF */
+      const { name, title, description, image, limit, dailyLimit, type, maxContext, duration } =
+        this.cache.tarif[cb.from.id]
+
+      const tarif = await DBService.createTarif({
+        name,
+        title,
+        description,
+        image,
+        limit,
+        dailyLimit,
+        maxContext,
+        duration,
+        type,
+      })
+
+      /* CREATING PRICES */
       const prices: CreatePriceArguments[] = []
 
       for (const key in this.cache.price) {
@@ -284,36 +305,23 @@ class TgController {
           currency: this.cache.price[key as PriceCacheKey].currency,
         })
       }
+
+      console.log('CACHE: ', this.cache.price)
+      console.log('PRICES: ', prices)
       const pricesId: number[] = []
 
       for (let i = 0; i < prices.length; ) {
-        const item = await DBService.createPrice(prices[i].value, prices[i].currency)
+        const item = await DBService.createPrice(prices[i].value, prices[i].currency, tarif.id)
         pricesId.push(item.id)
         i++
       }
 
-      const { name, title, description, image, limit, dailyLimit, type, maxContext, duration } =
-        this.cache.tarif[cb.from.id]
-
-      const tarif = await DBService.createTarif(
-        {
-          name,
-          title,
-          description,
-          image,
-          limit,
-          dailyLimit,
-          type,
-          maxContext,
-          duration,
-        },
-        cb.from.id,
-      )
-
-      for (let i = 0; i < pricesId.length; ) {
-        await DBService.addPrice(pricesId[i], tarif.id)
-        i++
-      }
+      console.log('PRICES ID: ', pricesId)
+      /* ASSOCIATING PRICES */
+      // for (let i = 0; i < pricesId.length; ) {
+      //   await DBService.addPrice(pricesId[i], tarif.id)
+      //   i++
+      // }
 
       return true
     }
@@ -324,7 +332,7 @@ class TgController {
         incrementRegistrationStep()
         break
       case 'reg_welcome_tarif':
-        this.cache.reg[cb.from.id].code = 'welcome_tarif'
+        this.cache.reg[cb.from.id].code = 'welcome'
         incrementRegistrationStep()
         break
       case 'reg_confirm':
@@ -337,8 +345,6 @@ class TgController {
         TgService.start(cb.from.id, this.cache.reg[cb.from.id])
         break
       case 'welcome_info':
-        TgService.info(cb.from.id)
-        break
       case 'reg_start':
         TgService.info(cb.from.id)
         break
@@ -353,6 +359,7 @@ class TgController {
         const success = await createTarif()
         if (success) {
           incrementTarifStep()
+          delete this.cache.tarif[cb.from.id]
         }
         break
 
@@ -367,36 +374,37 @@ class TgController {
         break
       case 'code_back':
         break
-    }
 
-    /* REGISTRATION LANG */
-    if (cb.data?.startsWith('reg_lang_')) {
-      this.cache.reg[cb.from.id].language = cb.data.replace('reg_lang_', '') as Language
-      incrementRegistrationStep()
-    }
+      default:
+        /* REGISTRATION SELECT LANGUAGE */
+        if (cb.data?.startsWith('reg_lang_')) {
+          this.cache.reg[cb.from.id].language = cb.data.replace('reg_lang_', '') as Language
+          incrementRegistrationStep()
+        }
 
-    /* TARIF TYPE */
-    if (cb.data?.startsWith('tarif_type_')) {
-      const type = cb.data.replace('tarif_type_', '') as TarifType
-      this.cache.tarif[cb.from.id].type = type
-      incrementTarifStep()
-    }
+        /* TARIF TYPE */
+        if (cb.data?.startsWith('tarif_type_')) {
+          const type = cb.data.replace('tarif_type_', '') as TarifType
+          this.cache.tarif[cb.from.id].type = type
+          incrementTarifStep()
+        }
 
-    /* TARIF ID AND NAME */
-    if (cb.data?.startsWith('code_tarif_')) {
-      this.cache.code[cb.from.id].tarifName = cb.data.replace(/^.*_(.*)_\d+$/, '$1')
-      this.cache.code[cb.from.id].tarifId = parseInt(cb.data.replace(/^.*_(\d+)$/, '$1'))
-      this.cache.code[cb.from.id].step++
-      TgService.createCode(cb.from.id, this.cache.code[cb.from.id])
-    }
+        /* TARIF ID AND NAME */
+        if (cb.data?.startsWith('code_tarif_')) {
+          this.cache.code[cb.from.id].tarifName = cb.data.replace(/^.*_(.*)_\d+$/, '$1')
+          this.cache.code[cb.from.id].tarifId = parseInt(cb.data.replace(/^.*_(\d+)$/, '$1'))
+          this.cache.code[cb.from.id].step++
+          TgService.createCode(cb.from.id, this.cache.code[cb.from.id])
+        }
 
-    /* CURRENCY */
-    if (cb.data?.startsWith('tarif_currency_')) {
-      const currency = cb.data.replace('tarif_currency_', '') as Currency
-      this.createCachePrice(currency)
-      this.cache.price[currency].currency = currency
-      this.cache.tarif[cb.from.id].currency = currency
-      incrementTarifStep()
+        /* CURRENCY */
+        if (cb.data?.startsWith('tarif_currency_')) {
+          const currency = cb.data.replace('tarif_currency_', '') as Currency
+          this.createCachePrice(currency)
+          this.cache.price[currency].currency = currency
+          this.cache.tarif[cb.from.id].currency = currency
+          incrementTarifStep()
+        }
     }
   }
 }
