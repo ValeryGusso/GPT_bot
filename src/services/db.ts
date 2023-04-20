@@ -1,7 +1,6 @@
 import { Currency, PrismaClient } from '@prisma/client'
 import { CreateTarifArguments, CreatePriceArguments, FullUser } from '../interfaces/db.js'
 import { ICode, IReg } from '../interfaces/tg.js'
-import { info } from 'console'
 
 class DBService {
   private readonly prisma
@@ -62,7 +61,7 @@ class DBService {
     await this.prisma.settings.create({ data: { userId: user.id, language: userInfo.language } })
     await this.prisma.activity.create({
       data: {
-        expiresIn: new Date(Date.now() + tarif.duration),
+        expiresIn: new Date(Date.now() + Number(tarif.duration)),
         userId: user.id,
         tarifId: tarif?.id,
       },
@@ -81,7 +80,7 @@ class DBService {
     maxContext,
     duration,
   }: CreateTarifArguments) {
-    const tarif = this.prisma.tarif.create({
+    const tarif = await this.prisma.tarif.create({
       data: {
         name,
         title,
@@ -165,6 +164,17 @@ class DBService {
     })
 
     return true
+  }
+
+  async updateActivity(id: number, usage: number) {
+    const activity = await this.prisma.activity.update({
+      where: { userId: id },
+      data: {
+        usage: { increment: usage },
+        dailyUsage: { increment: usage },
+      },
+    })
+    return activity
   }
 }
 

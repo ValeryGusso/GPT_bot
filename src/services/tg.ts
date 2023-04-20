@@ -1,4 +1,4 @@
-import TelegramBot, { InlineKeyboardButton } from 'node-telegram-bot-api'
+import TelegramBot, { InlineKeyboardButton, InlineKeyboardMarkup } from 'node-telegram-bot-api'
 import GPTController from '../controllers/gpt.js'
 import DBService from './db.js'
 import { ICode, IReg, ITarif, PriceCache, PriceCacheKey } from '../interfaces/tg.js'
@@ -16,6 +16,24 @@ class TgService {
 
   getBot() {
     return this.bot
+  }
+
+  async test(id: number) {
+    await this.bot.sendMessage(id, 'Test', {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'Test 1', callback_data: 'test_1' },
+            { text: 'Test 2', callback_data: 'test_2' },
+          ],
+          [
+            { text: 'Test 3', callback_data: 'test_3' },
+            { text: 'Test 4', callback_data: 'test_4' },
+          ],
+          [{ text: 'Test 5', callback_data: 'test_5' }],
+        ],
+      },
+    })
   }
 
   async welcome(id: number) {
@@ -131,6 +149,34 @@ class TgService {
     }
   }
 
+  async sendMenu(id: number, user: FullUser) {
+    const inline_keyboard: InlineKeyboardButton[][] = [
+      [
+        { text: 'Настройки', callback_data: 'menu_settings' },
+        { text: 'Мои лимиты', callback_data: 'menu_limits' },
+      ],
+      [
+        { text: 'Тарифы', callback_data: 'menu_tarifs' },
+        { text: 'О боте', callback_data: 'menu_about' },
+      ],
+      // [
+      //   { text: 'Test 2', callback_data: 'menu_' },
+      //   { text: 'Test 3', callback_data: 'menu_' },
+      // ],
+      [{ text: 'Начать чат!', callback_data: 'menu_start' }],
+    ]
+
+    if (user.isAdmin) {
+      inline_keyboard.push([{ text: 'Админка', callback_data: 'menu_admin' }])
+    }
+
+    await this.bot.sendMessage(id, 'Меню:', {
+      reply_markup: {
+        inline_keyboard,
+      },
+    })
+  }
+
   async createTarif(id: number, info: ITarif, price: PriceCache) {
     switch (info.step) {
       case 1:
@@ -155,14 +201,27 @@ class TgService {
         this.bot.sendMessage(id, 'Максимальная длина контекста:')
         break
       case 8:
-        this.bot.sendMessage(id, 'Длительность тарифа:')
+        this.bot.sendMessage(id, 'Длительность тарифа:', {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '1 месяц', callback_data: 'tarif_duration_2592000000', pay: true }],
+              [
+                {
+                  text: '1 год',
+                  callback_data: 'tarif_duration_31536000000',
+                  pay: true,
+                },
+              ],
+            ],
+          },
+        })
         break
       case 9:
         this.bot.sendMessage(id, 'Тип тарифа:', {
           reply_markup: {
             inline_keyboard: [
-              [{ text: 'Лимит', callback_data: 'tarif_type_' + TarifType.limit }],
-              [{ text: 'Подписка', callback_data: 'tarif_type_' + TarifType.subscribe }],
+              [{ text: 'Лимит', callback_data: 'tarif_type_' + TarifType.limit, pay: true }],
+              [{ text: 'Подписка', callback_data: 'tarif_type_' + TarifType.subscribe, pay: true }],
             ],
           },
         })
@@ -233,6 +292,7 @@ class TgService {
       case 0:
         await this.bot.sendMessage(id, 'Введи код:')
         break
+
       case 1:
         await this.bot.sendMessage(id, 'Укажи лимит использования')
         break
@@ -242,7 +302,7 @@ class TgService {
         let row = 0
         const buttons: InlineKeyboardButton[][] = []
         tarifs.forEach((tarif) => {
-          const index = Math.floor(5 / row)
+          const index = Math.floor(row / 5)
 
           if (!Array.isArray(buttons[index])) {
             buttons[index] = []
@@ -258,20 +318,6 @@ class TgService {
         await this.bot.sendMessage(id, `Выбери тариф`, {
           reply_markup: {
             inline_keyboard: buttons,
-            // inline_keyboard: [
-            //   [
-            //     {
-            //       text: 'Tarif',
-            //       callback_data: 'code_tarif_' + 'default_1',
-            //     },
-            //   ],
-            //   [
-            //     {
-            //       text: 'Moretarif',
-            //       callback_data: 'code_tarif_' + 'default_2',
-            //     },
-            //   ],
-            // ],
           },
         })
         break
@@ -290,28 +336,60 @@ class TgService {
         )
         break
       case 5:
-        await this.bot.sendMessage(id, `Код ${info.value} успешно создан!`, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: 'Создать ещё код',
-                  callback_data: 'code_add_new',
-                },
+        await this.bot.sendMessage(
+          id,
+          `Код ${info.value} для тарифа ${info.tarifName} с лимотом использования ${info.limit} успешно создан!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: 'Создать ещё код',
+                    callback_data: 'code_add_new',
+                  },
+                ],
+                [
+                  {
+                    text: 'Вернуться в меню',
+                    callback_data: 'code_back',
+                  },
+                ],
               ],
-              [
-                {
-                  text: 'Вернуться в меню',
-                  callback_data: 'code_back',
-                },
-              ],
-            ],
+            },
           },
-        })
+        )
         break
     }
   }
-  async settings(id: number, text: string) {}
+
+  async editButton(
+    chatId: number,
+    messageId: number,
+    query: string,
+    replacer: string,
+    marcup: InlineKeyboardMarkup,
+  ) {
+    const newMarkup: InlineKeyboardMarkup = {
+      inline_keyboard: [],
+    }
+
+    marcup?.inline_keyboard.forEach((row, rowIndex) =>
+      row.forEach((el) => {
+        if (!Array.isArray(newMarkup.inline_keyboard[rowIndex])) {
+          newMarkup.inline_keyboard[rowIndex] = []
+        }
+        const newButton: InlineKeyboardButton = {
+          text: query === el.callback_data ? replacer + el.text : el.text,
+          callback_data: 'edit',
+        }
+        newMarkup.inline_keyboard[rowIndex].push(newButton)
+      }),
+    )
+
+    await this.bot.editMessageReplyMarkup(newMarkup, { chat_id: chatId, message_id: messageId })
+  }
+
+  async settings(id: number, user: FullUser) {}
 
   async greeting(id: number, user: FullUser) {
     this.bot.sendMessage(
@@ -365,22 +443,34 @@ class TgService {
 
     sendTyping()
 
-    const res = withContext
+    // const res = withContext
+    const res = user.context?.useContext
       ? await GPTController.sendWithContext(text, id)
       : await GPTController.send(text)
 
     isOver = true
 
     if (res) {
-      await this.bot.sendMessage(id, res.message, { parse_mode: 'Markdown' })
+      const activity = await DBService.updateActivity(id, res.tokens)
+      const usage = `\n *****
+      \nИспользовано ${res.tokens}токенов. 
+      \nОсталось: 
+      \nсегодня: ${user.activity?.tarif.dailyLimit! - activity.dailyUsage} всего: ${
+        user.activity?.tarif.limit! - activity.usage
+      }
+      \n*****`
+      await this.bot.sendMessage(id, res.message + usage, {
+        parse_mode: 'Markdown',
+        reply_markup: { keyboard: [[{ text: 'Сбросить контекст' }]] },
+      })
       return true
     } else {
-      await this.sendError(id, 'Упс... что-то пошло не так, попробуй ещё раз.')
+      await this.sendMessage(id, 'Упс... что-то пошло не так, попробуй ещё раз.')
       return false
     }
   }
 
-  async sendError(id: number, message: string) {
+  async sendMessage(id: number, message: string) {
     this.bot.sendMessage(id, message)
   }
 }

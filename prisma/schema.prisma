@@ -9,7 +9,7 @@ datasource db {
 
 model User {
   id        Int       @id @default(autoincrement())
-  chatId    Int       @unique
+  chatId    BigInt    @unique @db.BigInt
   name      String
   isAdmin   Boolean   @default(false)
   isBanned  Boolean   @default(false)
@@ -34,6 +34,8 @@ model Activity {
   tarifId    Int      @unique
   createtAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@unique([id, userId])
 }
 
 model Settings {
@@ -46,6 +48,8 @@ model Settings {
   userId      Int      @unique
   createtAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([id, userId])
 }
 
 model Context {
@@ -58,6 +62,8 @@ model Context {
   userId      Int       @unique
   createtAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@unique([id, userId])
 }
 
 model Message {
@@ -68,6 +74,8 @@ model Message {
   contextId Int?
   createtAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+
+  @@unique([id, contextId])
 }
 
 model Token {
@@ -90,7 +98,7 @@ model Tarif {
   limit       Int
   dailyLimit  Int
   maxContext  Int        @db.SmallInt
-  duration    Int        @default(2592000000)
+  duration    BigInt     @default(2592000000) @db.BigInt
   type        TarifType
   price       Price[]
   code        Code[]
@@ -104,6 +112,7 @@ model Tarif {
 model Code {
   id        Int      @id @default(autoincrement())
   value     String   @unique
+  usage     Int      @default(0) @db.SmallInt
   limit     Int      @db.SmallInt
   expiresIn DateTime @default(dbgenerated("NOW() + interval '1 month'"))
   Tarif     Tarif?   @relation(fields: [tarifId], references: [id])
