@@ -5,14 +5,20 @@ export type ICache = {
   tarif: TarifCache
   price: PriceCache
   code: CodeCache
+  settings: SettingsCache
+  context: ContextCache
 }
+
+export type KeysOfCache = keyof ICache
+export type PriceCacheKey = keyof PriceCache
+export type CacheItem = RegistrationCache | TarifCache | PriceCache | CodeCache
 
 export type RegistrationCache = Record<string, IReg>
 export type TarifCache = Record<string, ITarif>
-export type PriceCache = Record<Currency, IPrice>
+export type PriceCache = Record<string, IPrice>
 export type CodeCache = Record<string, ICode>
-
-export type PriceCacheKey = keyof PriceCache
+export type SettingsCache = Record<string, ISettings>
+export type ContextCache = Record<string, IContext>
 
 export interface IReg {
   name: string
@@ -37,7 +43,9 @@ export interface ITarif {
   updatedAt: number
 }
 
-export interface IPrice {
+export type IPrice = Record<Currency, IPriceItem>
+
+export interface IPriceItem {
   value: number
   currency: Currency
   updatedAt: number
@@ -50,4 +58,15 @@ export interface ICode {
   tarifId: number
   tarifName: string
   updatedAt: number
+}
+
+export interface ISettings {
+  name: boolean
+  promo: boolean
+}
+
+export interface IContext {
+  length: boolean
+  service: boolean
+  random: boolean
 }

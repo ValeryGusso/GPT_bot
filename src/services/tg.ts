@@ -1,14 +1,40 @@
 import TelegramBot, { InlineKeyboardButton, InlineKeyboardMarkup } from 'node-telegram-bot-api'
 import GPTController from '../controllers/gpt.js'
 import DBService from './db.js'
-import { ICode, IReg, ITarif, PriceCache, PriceCacheKey } from '../interfaces/tg.js'
+import { ICode, IPrice, IReg, ITarif } from '../interfaces/tg.js'
 import { FullUser } from '../interfaces/db.js'
-import { Currency, TarifType } from '@prisma/client'
-
-const withContext = true
+import { Currency, Language, MessageRole, TarifType } from '@prisma/client'
+import { isFullUser, timestampToDate } from '../const/utils.js'
 
 class TgService {
   private readonly bot
+  private readonly backToSettingsButton = [
+    { text: 'Вернуться в настройки', callback_data: `settings_show` },
+  ]
+
+  private async getTarifButtons(prefix: string) {
+    const tarifs = await DBService.getAllTarifs()
+
+    const buttons: InlineKeyboardButton[][] = []
+    let row = 0
+
+    tarifs.forEach((tarif) => {
+      const index = Math.floor(row / 5)
+
+      if (!Array.isArray(buttons[index])) {
+        buttons[index] = []
+      }
+
+      buttons[index].push({
+        text: tarif.name,
+        callback_data: prefix + tarif.name + '_' + tarif.id,
+      })
+
+      row++
+    })
+
+    return buttons
+  }
 
   constructor() {
     this.bot = new TelegramBot(process.env.TG_TOKEN!, { polling: true })
@@ -177,7 +203,7 @@ class TgService {
     })
   }
 
-  async createTarif(id: number, info: ITarif, price: PriceCache) {
+  async createTarif(id: number, info: ITarif, price: IPrice) {
     switch (info.step) {
       case 1:
         this.bot.sendMessage(id, 'Кодовое название тарифа:')
@@ -247,9 +273,7 @@ class TgService {
       case 12:
         let result = `Текущие ценники для тарифа ${info.name}\n`
         for (const key in price) {
-          result += `${price[key as PriceCacheKey].value} ${
-            price[key as PriceCacheKey].currency
-          } \n`
+          result += `${price[key as Currency].value} ${price[key as Currency].currency} \n`
         }
         this.bot.sendMessage(id, result, {
           reply_markup: {
@@ -261,8 +285,6 @@ class TgService {
         })
         break
       case 13:
-        console.log('CASE 13: ', info)
-
         this.bot.sendMessage(
           id,
           `Тариф ${info.name} / ${info.title} успешно создан!
@@ -298,23 +320,8 @@ class TgService {
         break
 
       case 2:
-        const tarifs = await DBService.getAllTarifs()
-        let row = 0
-        const buttons: InlineKeyboardButton[][] = []
-        tarifs.forEach((tarif) => {
-          const index = Math.floor(row / 5)
+        const buttons = await this.getTarifButtons('code_tarif_')
 
-          if (!Array.isArray(buttons[index])) {
-            buttons[index] = []
-          }
-
-          buttons[index].push({
-            text: tarif.name,
-            callback_data: 'code_tarif_' + tarif.name + '_' + tarif.id,
-          })
-
-          row++
-        })
         await this.bot.sendMessage(id, `Выбери тариф`, {
           reply_markup: {
             inline_keyboard: buttons,
@@ -389,7 +396,70 @@ class TgService {
     await this.bot.editMessageReplyMarkup(newMarkup, { chat_id: chatId, message_id: messageId })
   }
 
-  async settings(id: number, user: FullUser) {}
+  async settings(id: number, user?: FullUser) {
+    let safeUser: FullUser | null | undefined = user
+
+    if (!user) {
+      safeUser = await DBService.getByChatId(id)
+    }
+
+    if (!isFullUser(safeUser)) {
+      throw new Error('User not found')
+    }
+
+    const buttons = [
+      [
+        { text: 'Параметры запросов', callback_data: 'settings_service_info' },
+        { text: 'Рандомайзер', callback_data: 'settings_random_' + safeUser.id },
+      ],
+      [
+        {
+          text: safeUser.context?.useContext ? 'Отключить контекст' : 'Включить контекст',
+          callback_data: `context_toggle_${safeUser.id}_${
+            safeUser.context?.useContext ? 'off' : 'on'
+          }`,
+        },
+        {
+          text: 'Максимальная длина контекста',
+          callback_data:
+            'context_change_length_' + safeUser.id + '_' + safeUser.activity?.tarif.maxContext,
+        },
+      ],
+      [
+        { text: 'Изменить имя', callback_data: 'settings_name_' + safeUser.name },
+        { text: 'Язык', callback_data: 'settings_lang_' + safeUser.id },
+      ],
+      [
+        { text: 'Все тарифы', callback_data: 'tarifs_show_all' },
+        { text: 'Ввести промокод', callback_data: 'tarifs_send_code' },
+      ],
+      [
+        { text: 'Мои лимиты', callback_data: 'settings_limits' },
+        { text: 'Версия GPT', callback_data: 'settings_version' },
+      ],
+      [{ text: 'Продолжить общение с ботом', callback_data: 'back_to_chat' }],
+    ]
+
+    this.bot.sendMessage(id, 'Настройки', {
+      reply_markup: {
+        inline_keyboard: buttons,
+      },
+    })
+  }
+
+  async settingsError(id: number) {
+    const buttons = [
+      [
+        { text: 'Вернуться к настройкам', callback_data: 'settings_show' },
+        { text: 'Продолжить общение с ботом', callback_data: 'back_to_chat' },
+      ],
+    ]
+    this.bot.sendMessage(id, 'Я не понимаю твоей команды. Выбери одно из следующих действий', {
+      reply_markup: {
+        inline_keyboard: buttons,
+      },
+    })
+  }
 
   async greeting(id: number, user: FullUser) {
     this.bot.sendMessage(
@@ -426,6 +496,39 @@ class TgService {
   }
 
   async sendQuestion(id: number, text: string, user: FullUser) {
+    const access = await DBService.validateAccess(user)
+
+    if (!access.daily || !access.total || !access.validTarif) {
+      await this.bot.sendMessage(
+        id,
+        access.validTarif
+          ? `К сожалению вы исчерпали ${!access.daily ? 'дневной' : ''} ${
+              !access.daily && !access.total ? 'и' : ''
+            }  ${!access.total ? 'общий' : ''} лимит использования.`
+          : 'К сожалению тариф более не действителен, но всегда можно перейти на стартовую версию или обновиться до расширенной!',
+        {
+          reply_markup: {
+            inline_keyboard: access.validTarif
+              ? [
+                  [
+                    { text: 'Text', callback_data: 'CB' },
+                    { text: 'Text', callback_data: 'CB' },
+                  ],
+                ]
+              : [
+                  [
+                    { text: 'Text', callback_data: 'CB' },
+                    { text: 'Text', callback_data: 'CB' },
+                  ],
+                ],
+          },
+        },
+      )
+
+      return
+    }
+
+    /* SEND TYPING ACTION */
     let isOver = false
     let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -443,25 +546,43 @@ class TgService {
 
     sendTyping()
 
-    // const res = withContext
+    /* CREATE CONTEXT AND GET ANSVER FROM GPT */
+    if (user.context?.useContext) {
+      await DBService.createMessage(MessageRole.user, text, user)
+    }
+
     const res = user.context?.useContext
-      ? await GPTController.sendWithContext(text, id)
+      ? await GPTController.sendWithContext(user)
       : await GPTController.send(text)
 
     isOver = true
 
+    /* SEND ANSVER */
     if (res) {
-      const activity = await DBService.updateActivity(id, res.tokens)
-      const usage = `\n *****
-      \nИспользовано ${res.tokens}токенов. 
-      \nОсталось: 
-      \nсегодня: ${user.activity?.tarif.dailyLimit! - activity.dailyUsage} всего: ${
-        user.activity?.tarif.limit! - activity.usage
+      if (user.context?.useContext) {
+        await DBService.createMessage(MessageRole.assistant, res.message, user)
       }
-      \n*****`
+
+      const activity = await DBService.updateActivity(user.id, res.tokens)
+
+      const usage = `\n\n--- --- --- --- --- --- --- --- ---
+      \nИспользовано ${res.tokens} токенов. 
+      \nОсталось: сегодня: ${user.activity?.tarif?.dailyLimit! - activity.dailyUsage} / всего: ${
+        user.activity?.tarif?.limit! - activity.usage
+      }\n\n--- --- --- --- --- --- --- --- ---`
+
       await this.bot.sendMessage(id, res.message + usage, {
         parse_mode: 'Markdown',
-        reply_markup: { keyboard: [[{ text: 'Сбросить контекст' }]] },
+        reply_markup: {
+          inline_keyboard: user.context?.useContext
+            ? [
+                [
+                  { text: 'Сбросить контекст 🔄', callback_data: 'context_reset' },
+                  { text: 'Отключить контекст', callback_data: `context_toggle_${user.id}_off` },
+                ],
+              ]
+            : [[{ text: 'Включить контекст', callback_data: `context_toggle_${user.id}_on` }]],
+        },
       })
       return true
     } else {
@@ -472,6 +593,248 @@ class TgService {
 
   async sendMessage(id: number, message: string) {
     this.bot.sendMessage(id, message)
+  }
+
+  async sendTarifs(id: number) {
+    const buttons = await this.getTarifButtons('settings_tarifs_')
+
+    this.bot.sendMessage(id, 'Доступные тарифы: ', {
+      reply_markup: { inline_keyboard: [...buttons, this.backToSettingsButton] },
+    })
+  }
+
+  async sendTarifById(userId: number, tarifId: number) {
+    const tarif = await DBService.getTaridById(tarifId)
+
+    const description = `${tarif.title}
+    \n${tarif.description}
+    \n --- --- --- --- --- --- ---
+    \nТип: ${tarif.type}, доступен в течении ${timestampToDate(tarif.duration)}
+    \nЛимиты: дневной ${tarif.dailyLimit} / общий ${tarif.limit}
+    \nМаксимальная доступная длина контекста: ${tarif.maxContext}`
+
+    this.bot.sendMessage(userId, description, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: 'Выбрать тариф: ' + tarif.title,
+              callback_data: 'tarif_select_' + tarif.name + '_' + tarif.id,
+            },
+            { text: 'Вернуться в настройки', callback_data: 'settings_show' },
+          ],
+        ],
+      },
+    })
+  }
+
+  async sendLanguages(id: number, userId: number) {
+    this.bot.sendMessage(id, 'Выбери язык: ', {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'Русский', callback_data: 'language_toggle_' + userId + '_' + Language.ru },
+            { text: 'English', callback_data: 'language_toggle_' + userId + '_' + Language.en },
+          ],
+          this.backToSettingsButton,
+        ],
+      },
+    })
+  }
+
+  async sendNameChoice(id: number, oldName: string) {
+    this.bot.sendMessage(id, `Пришли мне новое имя`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: `Отсавить текущее (${oldName})`, callback_data: `settings_show` }],
+        ],
+      },
+    })
+  }
+
+  async changeName(id: number, name: string, user: FullUser) {
+    await DBService.changeName(name, user)
+    this.bot.sendMessage(id, 'Имя успешно изменено на ' + name, {
+      reply_markup: {
+        inline_keyboard: [this.backToSettingsButton],
+      },
+    })
+  }
+
+  async sendCodeInput(id: number) {
+    this.bot.sendMessage(id, `Пришли мне код`, {
+      reply_markup: {
+        inline_keyboard: [this.backToSettingsButton],
+      },
+    })
+  }
+
+  async activateCode(chatId: number, code: string, user: FullUser) {
+    await DBService.activateCode(user.id, code)
+
+    this.bot.sendMessage(chatId, `Код успешно был активирован!`, {
+      reply_markup: {
+        inline_keyboard: [this.backToSettingsButton],
+      },
+    })
+  }
+
+  async sendContextLengthChoise(id: number, max: number, userId: number) {
+    this.bot.sendMessage(id, `Отправь мне желаемую длинну контекста. Но не более ${max}`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: `Максимум (${max})`, callback_data: `context_length_` + userId + '_' + max }],
+          this.backToSettingsButton,
+        ],
+      },
+    })
+  }
+
+  async contextLengthError(id: number, max: number, userId: number) {
+    this.bot.sendMessage(
+      id,
+      `Некорректный размер контекста, пожалуйста, укажи его правильно. Максимальный размер: ${max}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `Максимум (${max})`, callback_data: `context_length_` + userId + '_' + max }],
+            this.backToSettingsButton,
+          ],
+        },
+      },
+    )
+  }
+
+  async changeContextLength(id: number, value: number, userId: number) {
+    await DBService.changeContext(value, userId)
+    this.bot.sendMessage(
+      id,
+      `Максимальная длина контекста была успешно изменена и теперь составляет ${value} сообщений`,
+      {
+        reply_markup: {
+          inline_keyboard: [this.backToSettingsButton],
+        },
+      },
+    )
+  }
+
+  async sendRandomModels(chatId: number, userId: number) {
+    this.bot.sendMessage(
+      chatId,
+      `Выбери модель рандомизации ответа.
+    \nTemperature: 
+    \nTop_p: `,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'Temperature', callback_data: 'settings_random_model_temperature_' + userId },
+              { text: 'Top_p', callback_data: 'settings_random_model_topP_' + userId },
+            ],
+            this.backToSettingsButton,
+          ],
+        },
+      },
+    )
+  }
+
+  async sendRandomValues(chatId: number, model: string, userId: number) {
+    this.bot.sendMessage(
+      chatId,
+      'А теперь выбери одно из значени (чем больше значениие, тем более случайными получаются ответы)',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: '0.5',
+                callback_data: 'settings_random_value_' + model + '_0.5_' + userId,
+              },
+              {
+                text: '0.7(по умолчанию)',
+                callback_data: 'settings_random_value_' + model + '_0.7_' + userId,
+              },
+            ],
+            [
+              {
+                text: '0.9',
+                callback_data: 'settings_random_value_' + model + '_0.9_' + userId,
+              },
+              {
+                text: '1',
+                callback_data: 'settings_random_value_' + model + '_1_' + userId,
+              },
+              {
+                text: '1.1',
+                callback_data: 'settings_random_value_' + model + '_1.1_' + userId,
+              },
+              {
+                text: '1.25',
+                callback_data: 'settings_random_value_' + model + '_1.25_' + userId,
+              },
+              {
+                text: '1.5',
+                callback_data: 'settings_random_value_' + model + '_1.5_' + userId,
+              },
+            ],
+            this.backToSettingsButton,
+          ],
+        },
+      },
+    )
+  }
+
+  async changeRandomModel(chatId: number, model: string, value: number, userId: number) {
+    await DBService.changeRandomModel(model, value, userId)
+    this.bot.sendMessage(
+      chatId,
+      `Модель была успешно изменена на ${model}\nУровень рандомности выставлен на ${value}`,
+      {
+        reply_markup: {
+          inline_keyboard: [this.backToSettingsButton],
+        },
+      },
+    )
+  }
+
+  async languageToggle(chatId: number, id: number, lang: Language) {
+    await DBService.languageToggle(id, lang)
+    this.bot.sendMessage(
+      chatId,
+      `Язык успешно был изменён на ${lang === 'ru' ? 'русский' : 'англицский'}`,
+      {
+        reply_markup: {
+          inline_keyboard: [this.backToSettingsButton],
+        },
+      },
+    )
+  }
+
+  async contextToggle(chatId: number, userId: number, action: string, settings: boolean) {
+    await DBService.contextToggle(userId, action)
+
+    const buttons =
+      action === 'on'
+        ? [
+            [
+              { text: 'Сбросить контекст 🔄', callback_data: 'context_reset' },
+              { text: 'Отключить контекст', callback_data: `context_toggle_${userId}_off` },
+            ],
+          ]
+        : [[{ text: 'Включить контекст', callback_data: `context_toggle_${userId}_on` }]]
+
+    if (settings) {
+      buttons.push(this.backToSettingsButton)
+    }
+    this.bot.sendMessage(
+      chatId,
+      `Контекст был успешно ${action === 'on' ? 'включен' : 'отключен'}`,
+      {
+        reply_markup: {
+          inline_keyboard: buttons,
+        },
+      },
+    )
   }
 }
 

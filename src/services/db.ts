@@ -1,6 +1,14 @@
-import { Currency, PrismaClient } from '@prisma/client'
-import { CreateTarifArguments, CreatePriceArguments, FullUser } from '../interfaces/db.js'
+import { Currency, Language, MessageRole, PrismaClient } from '@prisma/client'
+import {
+  CreateTarifArguments,
+  CreatePriceArguments,
+  FullUser,
+  FullTarif,
+  IAccess,
+} from '../interfaces/db.js'
 import { ICode, IReg } from '../interfaces/tg.js'
+import { tarifRelations, userRelations } from '../const/relations.js'
+import { where } from 'sequelize'
 
 class DBService {
   private readonly prisma
@@ -12,13 +20,7 @@ class DBService {
   async getByChatId(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { chatId: id },
-      include: {
-        activity: { include: { tarif: true } },
-        settings: true,
-        context: { include: { value: true } },
-        token: true,
-      },
-      // rejectOnNotFound: false,
+      include: userRelations,
     })
 
     if (!user) {
@@ -29,30 +31,30 @@ class DBService {
   }
 
   async getAllTarifs() {
-    const tarifs = await this.prisma.tarif.findMany()
-    return tarifs
+    const tarifs = await this.prisma.tarif.findMany({
+      include: tarifRelations,
+    })
+    return tarifs as FullTarif[]
   }
 
+  async getTaridById(id: number) {
+    const tarif = await this.prisma.tarif.findUnique({
+      where: { id },
+      include: tarifRelations,
+    })
+    return tarif as FullTarif
+  }
   async createUser(id: number, userInfo: IReg) {
-    let tarifId = 1
+    const code = await this.prisma.code.findUnique({ where: { value: userInfo.code } })
 
-    if (userInfo.code === 'welcome') {
-      const code = await this.prisma.code.findUnique({
-        where: { value: userInfo.code },
-      })
-
-      if (code?.tarifId) {
-        tarifId = code.tarifId
-      }
+    if (!code?.tarifId) {
+      throw new Error('Invalide code')
     }
 
-    const tarif =
-      userInfo.code === 'welcome'
-        ? await this.prisma.tarif.findUnique({ where: { id: tarifId } })
-        : await this.prisma.tarif.findUnique({ where: { name: userInfo.code } })
+    const tarif = await this.prisma.tarif.findUnique({ where: { id: code.tarifId } })
 
     if (!tarif) {
-      throw new Error(`Tarif ${tarifId} does not exist!`)
+      throw new Error(`Tarif does not exist!`)
     }
 
     const user = await this.prisma.user.create({ data: { chatId: id, name: userInfo.name } })
@@ -115,6 +117,36 @@ class DBService {
     })
   }
 
+  async createMessage(role: MessageRole, content: string, user: FullUser) {
+    /* REMOVE FIRST MESSGAGE WHEN CONFEXT LIMIT IS OVER */
+    if (user.context?.length! >= user.activity?.tarif.maxContext!) {
+      const idList: number[] = []
+
+      user.context?.value.forEach((el) => {
+        idList.push(el.id)
+      })
+
+      const firstId = Math.min(...idList)
+
+      await this.prisma.message.delete({
+        where: {
+          id: firstId,
+        },
+      })
+    }
+
+    /* ADD NEW MESSAGE */
+    const message = await this.prisma.message.create({
+      data: {
+        role,
+        content,
+        contextId: user.context?.id!,
+      },
+    })
+
+    return message
+  }
+
   async addPrice(priceId: number, tarifId: number) {
     await this.prisma.tarif.update({
       where: {
@@ -166,6 +198,72 @@ class DBService {
     return true
   }
 
+  async clearContext(userOrId: FullUser | number) {
+    if (typeof userOrId === 'number') {
+      await this.prisma.message.deleteMany({ where: { context: { user: { chatId: userOrId } } } })
+      return true
+    } else {
+      await this.prisma.message.deleteMany({ where: { context: { userId: userOrId.id } } })
+      return true
+    }
+  }
+
+  async contextToggle(id: number, action: string) {
+    await this.prisma.context.update({
+      where: { userId: id },
+      data: { useContext: action === 'on' },
+    })
+  }
+
+  async languageToggle(id: number, lang: Language) {
+    await this.prisma.settings.update({
+      where: { userId: id },
+      data: {
+        language: lang,
+      },
+    })
+  }
+
+  async changeName(name: string, user: FullUser) {
+    await this.prisma.user.update({ where: { id: user.id }, data: { name } })
+  }
+
+  async changeContext(value: number, userId: number) {
+    await this.prisma.context.update({ where: { userId }, data: { length: value } })
+  }
+
+  async changeRandomModel(model: string, value: number, userId: number) {
+    await this.prisma.settings.update({
+      where: { userId },
+      data: {
+        randomModel: model,
+        temperature: value,
+        topP: value,
+      },
+    })
+  }
+
+  async changeTopPAndTemperature(value: number, userId: number) {
+    const settings = await this.prisma.settings.update({
+      where: { userId },
+      data: { temperature: value, topP: value },
+    })
+    return settings
+  }
+
+  async activateCode(userId: number, value: string) {
+    const code = await this.prisma.code.findUnique({ where: { value: value } })
+
+    if (!code?.tarifId) {
+      throw new Error('Промокод недействителен')
+    }
+
+    await this.prisma.activity.update({
+      where: { userId },
+      data: { tarif: { connect: { id: code.tarifId } } },
+    })
+  }
+
   async updateActivity(id: number, usage: number) {
     const activity = await this.prisma.activity.update({
       where: { userId: id },
@@ -175,6 +273,38 @@ class DBService {
       },
     })
     return activity
+  }
+
+  async validateAccess(user: FullUser) {
+    const access: IAccess = {
+      daily: true,
+      total: true,
+      validTarif: true,
+    }
+
+    const day = user.activity?.updatedAt.getDay()
+    const curDay = new Date(Date.now()).getDay()
+
+    if (day !== curDay) {
+      await this.prisma.activity.update({
+        where: { userId: user.id },
+        data: {
+          dailyUsage: 0,
+        },
+      })
+    }
+
+    if (Date.now() > +new Date(user.activity?.expiresIn.getTime()!)) {
+      access.validTarif = false
+    }
+    if (user.activity?.dailyUsage! > user.activity?.tarif?.dailyLimit!) {
+      access.daily = false
+    }
+    if (user.activity?.usage! > user.activity?.tarif?.limit!) {
+      access.total = false
+    }
+
+    return access
   }
 }
 

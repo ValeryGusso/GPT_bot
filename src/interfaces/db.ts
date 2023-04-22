@@ -25,3 +25,17 @@ export type FullUser = Prisma.UserGetPayload<{
     token: true
   }
 }>
+
+export type FullTarif = Prisma.TarifGetPayload<{
+  include: {
+    price: true
+    code: true
+    activity: true
+  }
+}>
+
+export interface IAccess {
+  daily: boolean
+  total: boolean
+  validTarif: boolean
+}
