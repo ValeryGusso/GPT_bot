@@ -1,4 +1,4 @@
-import { Currency, Language, MessageRole, PrismaClient } from '@prisma/client'
+import { Currency, Language, MessageRole, PrismaClient, RandomModels } from '@prisma/client'
 import {
   CreateTarifArguments,
   CreatePriceArguments,
@@ -8,7 +8,6 @@ import {
 } from '../interfaces/db.js'
 import { ICode, IReg } from '../interfaces/tg.js'
 import { tarifRelations, userRelations } from '../const/relations.js'
-import { where } from 'sequelize'
 
 class DBService {
   private readonly prisma
@@ -44,6 +43,7 @@ class DBService {
     })
     return tarif as FullTarif
   }
+
   async createUser(id: number, userInfo: IReg) {
     const code = await this.prisma.code.findUnique({ where: { value: userInfo.code } })
 
@@ -232,7 +232,7 @@ class DBService {
     await this.prisma.context.update({ where: { userId }, data: { length: value } })
   }
 
-  async changeRandomModel(model: string, value: number, userId: number) {
+  async changeRandomModel(model: RandomModels, value: number, userId: number) {
     await this.prisma.settings.update({
       where: { userId },
       data: {
@@ -243,12 +243,8 @@ class DBService {
     })
   }
 
-  async changeTopPAndTemperature(value: number, userId: number) {
-    const settings = await this.prisma.settings.update({
-      where: { userId },
-      data: { temperature: value, topP: value },
-    })
-    return settings
+  async changeQuery(query: string, user: FullUser) {
+    await this.prisma.context.update({ where: { userId: user.id }, data: { serviceInfo: query } })
   }
 
   async activateCode(userId: number, value: string) {

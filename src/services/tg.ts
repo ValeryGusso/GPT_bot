@@ -3,15 +3,23 @@ import GPTController from '../controllers/gpt.js'
 import DBService from './db.js'
 import { ICode, IPrice, IReg, ITarif } from '../interfaces/tg.js'
 import { FullUser } from '../interfaces/db.js'
-import { Currency, Language, MessageRole, TarifType } from '@prisma/client'
+import { Currency, Language, MessageRole, RandomModels, TarifType } from '@prisma/client'
 import { isFullUser, timestampToDate } from '../const/utils.js'
 
 class TgService {
   private readonly bot
+
+  constructor() {
+    this.bot = new TelegramBot(process.env.TG_TOKEN!, { polling: true })
+  }
+
+  /* BUTTONS */
   private readonly backToSettingsButton = [
     { text: 'Вернуться в настройки', callback_data: `settings_show` },
   ]
-
+  private readonly backToChatButton = [
+    { text: 'Продолжить общение с ботом', callback_data: 'back_to_chat' },
+  ]
   private async getTarifButtons(prefix: string) {
     const tarifs = await DBService.getAllTarifs()
 
@@ -36,30 +44,13 @@ class TgService {
     return buttons
   }
 
-  constructor() {
-    this.bot = new TelegramBot(process.env.TG_TOKEN!, { polling: true })
-  }
-
+  /* UTILS */
   getBot() {
     return this.bot
   }
 
-  async test(id: number) {
-    await this.bot.sendMessage(id, 'Test', {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: 'Test 1', callback_data: 'test_1' },
-            { text: 'Test 2', callback_data: 'test_2' },
-          ],
-          [
-            { text: 'Test 3', callback_data: 'test_3' },
-            { text: 'Test 4', callback_data: 'test_4' },
-          ],
-          [{ text: 'Test 5', callback_data: 'test_5' }],
-        ],
-      },
-    })
+  async sendMessage(id: number, message: string) {
+    this.bot.sendMessage(id, message)
   }
 
   async welcome(id: number) {
@@ -77,6 +68,119 @@ class TgService {
     )
   }
 
+  async editButton(
+    chatId: number,
+    messageId: number,
+    query: string,
+    replacer: string,
+    marcup: InlineKeyboardMarkup,
+  ) {
+    const newMarkup: InlineKeyboardMarkup = {
+      inline_keyboard: [],
+    }
+
+    marcup?.inline_keyboard.forEach((row, rowIndex) =>
+      row.forEach((el) => {
+        if (!Array.isArray(newMarkup.inline_keyboard[rowIndex])) {
+          newMarkup.inline_keyboard[rowIndex] = []
+        }
+        const newButton: InlineKeyboardButton = {
+          text: query === el.callback_data ? replacer + el.text : el.text,
+          callback_data: 'edit',
+        }
+        newMarkup.inline_keyboard[rowIndex].push(newButton)
+      }),
+    )
+
+    await this.bot.editMessageReplyMarkup(newMarkup, { chat_id: chatId, message_id: messageId })
+  }
+
+  sendTyping(chatId: number) {
+    let isOver = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const typing = () => {
+      this.bot.sendChatAction(chatId, 'typing')
+      if (timer) {
+        clearTimeout(timer)
+      }
+      timer = setTimeout(() => {
+        if (!isOver) {
+          typing()
+        }
+      }, 5000)
+    }
+
+    typing()
+
+    return () => (isOver = true)
+  }
+
+  /* NEED REWORK OR DELETE */
+  async greeting(id: number, user: FullUser) {
+    this.bot.sendMessage(
+      id,
+      `Рад приветсвовать тебя вновь, ${user.name}.\nЕсли ты забыл список команд или тебе нужна помощь, то можешь выбрать одно из преведённых ниже действий чтобы продолжить`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'Заполнить профиль заново', callback_data: 'command_' },
+              { text: 'Перейти к настройкам', callback_data: 'command_' },
+            ],
+            [
+              { text: 'Посмотреть тарифы', callback_data: 'command_' },
+              { text: 'Информация о боте', callback_data: 'command_' },
+            ],
+            [{ text: 'Начать диалог с botGPT!', callback_data: 'command_' }],
+          ],
+        },
+      },
+    )
+  }
+
+  async info(id: number) {
+    this.bot.sendMessage(id, 'Информация!', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Кнопка', callback_data: 'info_' }],
+          [{ text: 'Ещё кнопка', callback_data: 'info_' }],
+        ],
+      },
+    })
+  }
+
+  async sendMenu(id: number, user: FullUser) {
+    const inline_keyboard: InlineKeyboardButton[][] = [
+      [
+        { text: 'Настройки', callback_data: 'menu_settings' },
+        { text: 'Мои лимиты', callback_data: 'menu_limits' },
+      ],
+      [
+        { text: 'Тарифы', callback_data: 'menu_tarifs' },
+        { text: 'О боте', callback_data: 'menu_about' },
+      ],
+      // [
+      //   { text: 'Test 2', callback_data: 'menu_' },
+      //   { text: 'Test 3', callback_data: 'menu_' },
+      // ],
+      [{ text: 'Начать чат!', callback_data: 'menu_start' }],
+    ]
+
+    if (user.isAdmin) {
+      inline_keyboard.push([{ text: 'Админка', callback_data: 'menu_admin' }])
+    }
+
+    await this.bot.sendMessage(id, 'Меню:', {
+      reply_markup: {
+        inline_keyboard,
+      },
+    })
+  }
+  /* END OF BLOCK REWORK OR DELETE */
+
+  /* START AND REGISTRATION */
   async start(id: number, info: IReg, error?: string) {
     switch (info.step) {
       case 1:
@@ -175,34 +279,152 @@ class TgService {
     }
   }
 
-  async sendMenu(id: number, user: FullUser) {
-    const inline_keyboard: InlineKeyboardButton[][] = [
-      [
-        { text: 'Настройки', callback_data: 'menu_settings' },
-        { text: 'Мои лимиты', callback_data: 'menu_limits' },
-      ],
-      [
-        { text: 'Тарифы', callback_data: 'menu_tarifs' },
-        { text: 'О боте', callback_data: 'menu_about' },
-      ],
-      // [
-      //   { text: 'Test 2', callback_data: 'menu_' },
-      //   { text: 'Test 3', callback_data: 'menu_' },
-      // ],
-      [{ text: 'Начать чат!', callback_data: 'menu_start' }],
-    ]
+  /* CODE */
+  async createCode(id: number, info: ICode) {
+    switch (info.step) {
+      case 0:
+        await this.bot.sendMessage(id, 'Введи код:')
+        break
 
-    if (user.isAdmin) {
-      inline_keyboard.push([{ text: 'Админка', callback_data: 'menu_admin' }])
+      case 1:
+        await this.bot.sendMessage(id, 'Укажи лимит использования')
+        break
+
+      case 2:
+        const buttons = await this.getTarifButtons('code_tarif_')
+
+        await this.bot.sendMessage(id, `Выбери тариф`, {
+          reply_markup: {
+            inline_keyboard: buttons,
+          },
+        })
+        break
+      case 4:
+        await this.bot.sendMessage(
+          id,
+          `Всё правильно?\nТариф: ${info.tarifName} с айди ${info.tarifId}\nКод: ${info.value}\nЛимит :${info.limit}`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: 'Заполнить ещё раз', callback_data: 'code_reset' }],
+                [{ text: 'Подтвердить', callback_data: 'code_confirm' }],
+              ],
+            },
+          },
+        )
+        break
+      case 5:
+        await this.bot.sendMessage(
+          id,
+          `Код ${info.value} для тарифа ${info.tarifName} с лимотом использования ${info.limit} успешно создан!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: 'Создать ещё код',
+                    callback_data: 'code_add_new',
+                  },
+                ],
+                [
+                  {
+                    text: 'Вернуться в меню',
+                    callback_data: 'code_back',
+                  },
+                ],
+              ],
+            },
+          },
+        )
+        break
     }
+  }
 
-    await this.bot.sendMessage(id, 'Меню:', {
+  async activateCode(chatId: number, code: string, user: FullUser) {
+    await DBService.activateCode(user.id, code)
+
+    this.bot.sendMessage(chatId, `Код успешно был активирован!`, {
       reply_markup: {
-        inline_keyboard,
+        inline_keyboard: [this.backToSettingsButton, this.backToChatButton],
       },
     })
   }
 
+  /* GPT */
+  async sendQuestion(id: number, text: string, user: FullUser) {
+    /* VALIDATE ACCESS */
+    const access = await DBService.validateAccess(user)
+
+    if (!access.daily || !access.total || !access.validTarif) {
+      await this.bot.sendMessage(
+        id,
+        access.validTarif
+          ? `К сожалению вы исчерпали ${!access.daily ? 'дневной' : ''} ${
+              !access.daily && !access.total ? 'и' : ''
+            }  ${!access.total ? 'общий' : ''} лимит использования.`
+          : 'К сожалению тариф более не действителен, но всегда можно перейти на стартовую версию или обновиться до расширенной!',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: 'Перейти к тарифам', callback_data: 'tarifs_show_all' }],
+              this.backToSettingsButton,
+            ],
+          },
+        },
+      )
+
+      return
+    }
+
+    /* SEND TYPING ACTION */
+    const stop = this.sendTyping(id)
+
+    /* CREATE CONTEXT AND GET ANSVER FROM GPT */
+    if (user.context?.useContext) {
+      await DBService.createMessage(MessageRole.user, text, user)
+    }
+
+    const res = user.context?.useContext
+      ? await GPTController.sendWithContext(user)
+      : await GPTController.send(text)
+
+    stop()
+
+    /* SEND ANSVER */
+    if (res) {
+      if (user.context?.useContext) {
+        await DBService.createMessage(MessageRole.assistant, res.message, user)
+      }
+
+      const activity = await DBService.updateActivity(user.id, res.tokens)
+
+      const usage = `\n\n--- --- --- --- --- --- --- --- ---
+      \nИспользовано ${res.tokens} токенов. 
+      \nОсталось: сегодня: ${user.activity?.tarif?.dailyLimit! - activity.dailyUsage} / всего: ${
+        user.activity?.tarif?.limit! - activity.usage
+      }\n\n--- --- --- --- --- --- --- --- ---`
+
+      await this.bot.sendMessage(id, res.message + usage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: user.context?.useContext
+            ? [
+                [
+                  { text: 'Сбросить контекст 🔄', callback_data: 'context_reset' },
+                  { text: 'Отключить контекст', callback_data: `context_toggle_${user.id}_off` },
+                ],
+              ]
+            : [[{ text: 'Включить контекст', callback_data: `context_toggle_${user.id}_on` }]],
+        },
+      })
+      return true
+    } else {
+      await this.sendMessage(id, 'Упс... что-то пошло не так, попробуй ещё раз.')
+      return false
+    }
+  }
+
+  /* TARIFS */
   async createTarif(id: number, info: ITarif, price: IPrice) {
     switch (info.step) {
       case 1:
@@ -309,93 +531,57 @@ class TgService {
     }
   }
 
-  async createCode(id: number, info: ICode) {
-    switch (info.step) {
-      case 0:
-        await this.bot.sendMessage(id, 'Введи код:')
-        break
+  async sendTarifs(id: number) {
+    const buttons = await this.getTarifButtons('settings_tarifs_')
 
-      case 1:
-        await this.bot.sendMessage(id, 'Укажи лимит использования')
-        break
-
-      case 2:
-        const buttons = await this.getTarifButtons('code_tarif_')
-
-        await this.bot.sendMessage(id, `Выбери тариф`, {
-          reply_markup: {
-            inline_keyboard: buttons,
-          },
-        })
-        break
-      case 4:
-        await this.bot.sendMessage(
-          id,
-          `Всё правильно?\nТариф: ${info.tarifName} с айди ${info.tarifId}\nКод: ${info.value}\nЛимит :${info.limit}`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: 'Заполнить ещё раз', callback_data: 'code_reset' }],
-                [{ text: 'Подтвердить', callback_data: 'code_confirm' }],
-              ],
-            },
-          },
-        )
-        break
-      case 5:
-        await this.bot.sendMessage(
-          id,
-          `Код ${info.value} для тарифа ${info.tarifName} с лимотом использования ${info.limit} успешно создан!`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: 'Создать ещё код',
-                    callback_data: 'code_add_new',
-                  },
-                ],
-                [
-                  {
-                    text: 'Вернуться в меню',
-                    callback_data: 'code_back',
-                  },
-                ],
-              ],
-            },
-          },
-        )
-        break
-    }
+    this.bot.sendMessage(id, 'Доступные тарифы: ', {
+      reply_markup: { inline_keyboard: [...buttons, this.backToSettingsButton] },
+    })
   }
 
-  async editButton(
-    chatId: number,
-    messageId: number,
-    query: string,
-    replacer: string,
-    marcup: InlineKeyboardMarkup,
-  ) {
-    const newMarkup: InlineKeyboardMarkup = {
-      inline_keyboard: [],
-    }
+  async sendTarifById(chatId: number, tarifId: number) {
+    const tarif = await DBService.getTaridById(tarifId)
 
-    marcup?.inline_keyboard.forEach((row, rowIndex) =>
-      row.forEach((el) => {
-        if (!Array.isArray(newMarkup.inline_keyboard[rowIndex])) {
-          newMarkup.inline_keyboard[rowIndex] = []
-        }
-        const newButton: InlineKeyboardButton = {
-          text: query === el.callback_data ? replacer + el.text : el.text,
-          callback_data: 'edit',
-        }
-        newMarkup.inline_keyboard[rowIndex].push(newButton)
-      }),
-    )
+    const description = `${tarif.title}
+    \n${tarif.description}
+    \n --- --- --- --- --- --- ---
+    \nТип: ${tarif.type}, доступен в течении ${timestampToDate(tarif.duration)}
+    \nЛимиты: дневной ${tarif.dailyLimit} / общий ${tarif.limit}
+    \nМаксимальная доступная длина контекста: ${tarif.maxContext}`
 
-    await this.bot.editMessageReplyMarkup(newMarkup, { chat_id: chatId, message_id: messageId })
+    this.bot.sendMessage(chatId, description, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: 'Выбрать тариф: ' + tarif.title,
+              callback_data: 'tarif_select_' + tarif.name + '_' + tarif.id,
+            },
+            { text: 'Вернуться в настройки', callback_data: 'settings_show' },
+          ],
+        ],
+      },
+    })
   }
 
+  async sendMyTarif(chatId: number) {
+    const user = await DBService.getByChatId(chatId)
+
+    const description = `Мой тариф ${user?.activity?.tarif.title}
+    \nОбщий лимит ${user?.activity?.tarif.limit} / ежедневный ${user?.activity?.tarif.dailyLimit}
+    \nОсталось ${user?.activity?.tarif.limit! - user?.activity?.usage!} / ${
+      user?.activity?.tarif.dailyLimit! - user?.activity?.dailyUsage!
+    }
+    \nЗаканчивается ${user?.activity?.expiresIn.toLocaleDateString()}`
+
+    this.bot.sendMessage(chatId, description, {
+      reply_markup: {
+        inline_keyboard: [this.backToSettingsButton, this.backToChatButton],
+      },
+    })
+  }
+
+  /* SETTINGS */
   async settings(id: number, user?: FullUser) {
     let safeUser: FullUser | null | undefined = user
 
@@ -434,10 +620,10 @@ class TgService {
         { text: 'Ввести промокод', callback_data: 'tarifs_send_code' },
       ],
       [
-        { text: 'Мои лимиты', callback_data: 'settings_limits' },
         { text: 'Версия GPT', callback_data: 'settings_version' },
+        { text: 'Мои лимиты', callback_data: 'settings_limits' },
       ],
-      [{ text: 'Продолжить общение с ботом', callback_data: 'back_to_chat' }],
+      this.backToChatButton,
     ]
 
     this.bot.sendMessage(id, 'Настройки', {
@@ -449,181 +635,12 @@ class TgService {
 
   async settingsError(id: number) {
     const buttons = [
-      [
-        { text: 'Вернуться к настройкам', callback_data: 'settings_show' },
-        { text: 'Продолжить общение с ботом', callback_data: 'back_to_chat' },
-      ],
+      [{ text: 'Вернуться к настройкам', callback_data: 'settings_show' }],
+      this.backToChatButton,
     ]
     this.bot.sendMessage(id, 'Я не понимаю твоей команды. Выбери одно из следующих действий', {
       reply_markup: {
         inline_keyboard: buttons,
-      },
-    })
-  }
-
-  async greeting(id: number, user: FullUser) {
-    this.bot.sendMessage(
-      id,
-      `Рад приветсвовать тебя вновь, ${user.name}.\nЕсли ты забыл список команд или тебе нужна помощь, то можешь выбрать одно из преведённых ниже действий чтобы продолжить`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: 'Заполнить профиль заново', callback_data: 'command_' },
-              { text: 'Перейти к настройкам', callback_data: 'command_' },
-            ],
-            [
-              { text: 'Посмотреть тарифы', callback_data: 'command_' },
-              { text: 'Информация о боте', callback_data: 'command_' },
-            ],
-            [{ text: 'Начать диалог с botGPT!', callback_data: 'command_' }],
-          ],
-        },
-      },
-    )
-  }
-
-  async info(id: number) {
-    this.bot.sendMessage(id, 'Информация!', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Кнопка', callback_data: 'info_' }],
-          [{ text: 'Ещё кнопка', callback_data: 'info_' }],
-        ],
-      },
-    })
-  }
-
-  async sendQuestion(id: number, text: string, user: FullUser) {
-    const access = await DBService.validateAccess(user)
-
-    if (!access.daily || !access.total || !access.validTarif) {
-      await this.bot.sendMessage(
-        id,
-        access.validTarif
-          ? `К сожалению вы исчерпали ${!access.daily ? 'дневной' : ''} ${
-              !access.daily && !access.total ? 'и' : ''
-            }  ${!access.total ? 'общий' : ''} лимит использования.`
-          : 'К сожалению тариф более не действителен, но всегда можно перейти на стартовую версию или обновиться до расширенной!',
-        {
-          reply_markup: {
-            inline_keyboard: access.validTarif
-              ? [
-                  [
-                    { text: 'Text', callback_data: 'CB' },
-                    { text: 'Text', callback_data: 'CB' },
-                  ],
-                ]
-              : [
-                  [
-                    { text: 'Text', callback_data: 'CB' },
-                    { text: 'Text', callback_data: 'CB' },
-                  ],
-                ],
-          },
-        },
-      )
-
-      return
-    }
-
-    /* SEND TYPING ACTION */
-    let isOver = false
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    const sendTyping = () => {
-      this.bot.sendChatAction(id, 'typing')
-      if (timer) {
-        clearTimeout(timer)
-      }
-      timer = setTimeout(() => {
-        if (!isOver) {
-          sendTyping()
-        }
-      }, 5000)
-    }
-
-    sendTyping()
-
-    /* CREATE CONTEXT AND GET ANSVER FROM GPT */
-    if (user.context?.useContext) {
-      await DBService.createMessage(MessageRole.user, text, user)
-    }
-
-    const res = user.context?.useContext
-      ? await GPTController.sendWithContext(user)
-      : await GPTController.send(text)
-
-    isOver = true
-
-    /* SEND ANSVER */
-    if (res) {
-      if (user.context?.useContext) {
-        await DBService.createMessage(MessageRole.assistant, res.message, user)
-      }
-
-      const activity = await DBService.updateActivity(user.id, res.tokens)
-
-      const usage = `\n\n--- --- --- --- --- --- --- --- ---
-      \nИспользовано ${res.tokens} токенов. 
-      \nОсталось: сегодня: ${user.activity?.tarif?.dailyLimit! - activity.dailyUsage} / всего: ${
-        user.activity?.tarif?.limit! - activity.usage
-      }\n\n--- --- --- --- --- --- --- --- ---`
-
-      await this.bot.sendMessage(id, res.message + usage, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: user.context?.useContext
-            ? [
-                [
-                  { text: 'Сбросить контекст 🔄', callback_data: 'context_reset' },
-                  { text: 'Отключить контекст', callback_data: `context_toggle_${user.id}_off` },
-                ],
-              ]
-            : [[{ text: 'Включить контекст', callback_data: `context_toggle_${user.id}_on` }]],
-        },
-      })
-      return true
-    } else {
-      await this.sendMessage(id, 'Упс... что-то пошло не так, попробуй ещё раз.')
-      return false
-    }
-  }
-
-  async sendMessage(id: number, message: string) {
-    this.bot.sendMessage(id, message)
-  }
-
-  async sendTarifs(id: number) {
-    const buttons = await this.getTarifButtons('settings_tarifs_')
-
-    this.bot.sendMessage(id, 'Доступные тарифы: ', {
-      reply_markup: { inline_keyboard: [...buttons, this.backToSettingsButton] },
-    })
-  }
-
-  async sendTarifById(userId: number, tarifId: number) {
-    const tarif = await DBService.getTaridById(tarifId)
-
-    const description = `${tarif.title}
-    \n${tarif.description}
-    \n --- --- --- --- --- --- ---
-    \nТип: ${tarif.type}, доступен в течении ${timestampToDate(tarif.duration)}
-    \nЛимиты: дневной ${tarif.dailyLimit} / общий ${tarif.limit}
-    \nМаксимальная доступная длина контекста: ${tarif.maxContext}`
-
-    this.bot.sendMessage(userId, description, {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: 'Выбрать тариф: ' + tarif.title,
-              callback_data: 'tarif_select_' + tarif.name + '_' + tarif.id,
-            },
-            { text: 'Вернуться в настройки', callback_data: 'settings_show' },
-          ],
-        ],
       },
     })
   }
@@ -646,7 +663,12 @@ class TgService {
     this.bot.sendMessage(id, `Пришли мне новое имя`, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: `Отсавить текущее (${oldName})`, callback_data: `settings_show` }],
+          [
+            {
+              text: `Оставить текущее (${oldName}) и вернуться обратно`,
+              callback_data: `settings_show`,
+            },
+          ],
         ],
       },
     })
@@ -656,23 +678,13 @@ class TgService {
     await DBService.changeName(name, user)
     this.bot.sendMessage(id, 'Имя успешно изменено на ' + name, {
       reply_markup: {
-        inline_keyboard: [this.backToSettingsButton],
+        inline_keyboard: [this.backToSettingsButton, this.backToChatButton],
       },
     })
   }
 
   async sendCodeInput(id: number) {
     this.bot.sendMessage(id, `Пришли мне код`, {
-      reply_markup: {
-        inline_keyboard: [this.backToSettingsButton],
-      },
-    })
-  }
-
-  async activateCode(chatId: number, code: string, user: FullUser) {
-    await DBService.activateCode(user.id, code)
-
-    this.bot.sendMessage(chatId, `Код успешно был активирован!`, {
       reply_markup: {
         inline_keyboard: [this.backToSettingsButton],
       },
@@ -712,7 +724,7 @@ class TgService {
       `Максимальная длина контекста была успешно изменена и теперь составляет ${value} сообщений`,
       {
         reply_markup: {
-          inline_keyboard: [this.backToSettingsButton],
+          inline_keyboard: [this.backToSettingsButton, this.backToChatButton],
         },
       },
     )
@@ -738,7 +750,7 @@ class TgService {
     )
   }
 
-  async sendRandomValues(chatId: number, model: string, userId: number) {
+  async sendRandomValues(chatId: number, model: RandomModels, userId: number) {
     this.bot.sendMessage(
       chatId,
       'А теперь выбери одно из значени (чем больше значениие, тем более случайными получаются ответы)',
@@ -784,24 +796,53 @@ class TgService {
     )
   }
 
-  async changeRandomModel(chatId: number, model: string, value: number, userId: number) {
+  async changeRandomModel(chatId: number, model: RandomModels, value: number, userId: number) {
     await DBService.changeRandomModel(model, value, userId)
     this.bot.sendMessage(
       chatId,
       `Модель была успешно изменена на ${model}\nУровень рандомности выставлен на ${value}`,
       {
         reply_markup: {
-          inline_keyboard: [this.backToSettingsButton],
+          inline_keyboard: [this.backToSettingsButton, this.backToChatButton],
         },
       },
     )
   }
 
+  async sendQueryInput(chatId: number) {
+    await this.bot.sendMessage(
+      chatId,
+      'Укажи дополнительные парамтры запросов.\nОни будут каждый раз отправляться вместе с сообщением. Бот не будет на них отвечать, но учтёт их при составлении ответа.',
+      {
+        reply_markup: { inline_keyboard: [this.backToSettingsButton] },
+      },
+    )
+  }
+
+  async changeQuery(chatId: number, query: string, user: FullUser) {
+    await DBService.changeQuery(query, user)
+    this.bot.sendMessage(chatId, 'Дополнительные параметры запроса были успешно изменены', {
+      reply_markup: { inline_keyboard: [this.backToSettingsButton, this.backToChatButton] },
+    })
+  }
+
+  async sendVersion(chatId: number) {
+    this.bot.sendMessage(
+      chatId,
+      'К сожалению на данный момент доступна только версия ***gpt-3.5-turbo***, как только 4я версия станет доступной, я обязательно об этом сообщу.',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [this.backToSettingsButton, this.backToChatButton] },
+      },
+    )
+  }
+
+  /* TOGGLE */
   async languageToggle(chatId: number, id: number, lang: Language) {
     await DBService.languageToggle(id, lang)
     this.bot.sendMessage(
       chatId,
-      `Язык успешно был изменён на ${lang === 'ru' ? 'русский' : 'англицский'}`,
+      `Язык был успешно изменён на ${lang === 'ru' ? 'русский' : 'английский'}`,
       {
         reply_markup: {
           inline_keyboard: [this.backToSettingsButton],
@@ -826,6 +867,9 @@ class TgService {
     if (settings) {
       buttons.push(this.backToSettingsButton)
     }
+
+    buttons.push(this.backToChatButton)
+
     this.bot.sendMessage(
       chatId,
       `Контекст был успешно ${action === 'on' ? 'включен' : 'отключен'}`,

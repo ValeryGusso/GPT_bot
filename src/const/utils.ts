@@ -1,10 +1,7 @@
+import { RandomModels } from '@prisma/client'
 import { FullUser } from '../interfaces/db.js'
 
 export function timestampToDate(ts: bigint) {
-  // const year = Math.floor(Number(ts) / 365 / 24 / 60 / 60 / 1000)
-  // const month = Math.floor(Number(ts) / 30 / 24 / 60 / 60 / 1000)
-  // const day = Math.floor(Number(ts) / 24 / 60 / 60 / 1000)
-
   return `Предоставляет доступ на ${Math.floor(Number(ts) / 24 / 60 / 60 / 1000)} дней`
 }
 
@@ -33,7 +30,7 @@ export function getContextId(str: string) {
 }
 
 export function getRandomModelName(str: string) {
-  return str.replace(/^.*_(\w+)_.+_\d+$/i, '$1') /* as RandomModel */
+  return str.replace(/^.*_(\w+)_.+_\d+$/i, '$1') as RandomModels
 }
 
 export function getRandomModelValue(str: string) {

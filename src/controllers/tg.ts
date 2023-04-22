@@ -4,7 +4,7 @@ import TgService from '../services/tg.js'
 import DBService from '../services/db.js'
 import { ICache, IPrice, KeysOfCache } from '../interfaces/tg.js'
 import { CreatePriceArguments, FullUser } from '../interfaces/db.js'
-import { Currency, Language, TarifType } from '@prisma/client'
+import { Currency, Language, RandomModels, TarifType } from '@prisma/client'
 import { allCurrencys } from '../const/const.js'
 import {
   getContextId,
@@ -28,7 +28,9 @@ class TgController {
     settings: {},
     context: {},
   }
+
   private readonly cacheExpires = 60 * 60 * 1000
+
   private clearAllCacheById(chatId: number) {
     const keys: KeysOfCache[] = ['reg', 'tarif', 'price', 'code', 'settings', 'context']
 
@@ -36,10 +38,7 @@ class TgController {
       delete this.cache[primaryKey][chatId]
     })
   }
-  private sendError(chatId: number, message: string) {
-    this.clearAllCacheById(chatId)
-    TgService.sendMessage(chatId, 'Упс... что-то пошло не так, попробуй ещё раз.' + '\n' + message)
-  }
+
   private clearCache() {
     // const curTime = Date.now()
     // const keys: KeysOfCache[] = ['reg', 'tarif', 'price', 'code', 'settings', 'context']
@@ -253,10 +252,20 @@ class TgController {
     }
   }
 
+  private async sendError(chatId: number, message: string) {
+    this.clearAllCacheById(chatId)
+    await TgService.sendMessage(
+      chatId,
+      'Упс... что-то пошло не так, попробуй ещё раз.' + '\n' + message,
+    )
+  }
+
   /* LISTENERS */
   async message(msg: Message) {
     const { text } = msg
     const chatId = msg.chat.id
+    const stop = TgService.sendTyping(chatId)
+    stop()
 
     try {
       /* PREVALIDATION */
@@ -266,24 +275,19 @@ class TgController {
         return
       }
 
-      // /* CHEC UTH AND REGISTRATION */
+      /* CHECK UTH AND REGISTRATION */
       const user = await DBService.getByChatId(chatId)
 
       const checkAuth = this.checkAuthAndRegistration(chatId, text, user, msg.from?.first_name)
 
       if (!checkAuth) {
-        return
-      }
-
-      if (text === '/test') {
-        TgService.test(chatId)
+        this.sendError(chatId, 'Пользователь не найден.')
         return
       }
 
       /* RESET CONTEXT */
       if (text === '/reset') {
         DBService.clearContext(user)
-        // GPTController.resetContext(chatId)
         return
       }
 
@@ -326,7 +330,19 @@ class TgController {
           this.cache.context[chatId].length = false
           return
         }
+
+        if (this.cache.context[chatId].service) {
+          if (!text) {
+            await this.sendError(chatId, 'Необходимо указать корректные параметры!')
+            await TgService.sendQueryInput(chatId)
+            return
+          }
+          await TgService.changeQuery(chatId, text, user)
+          this.cache.context[chatId].service = false
+          return
+        }
       }
+
       /* HELP */
       if (text === '/help') {
         return
@@ -382,13 +398,27 @@ class TgController {
   }
 
   async callback(cb: CallbackQuery) {
+    const chatId = cb.from.id
+
+    /* ADD CHECKBOX TO SEARCHED BUTTON */
+    TgService.editButton(
+      chatId,
+      cb.message?.message_id!,
+      cb.data!,
+      '✅ ',
+      cb.message?.reply_markup!,
+    )
+
+    /* PREVALIDATION BUTTON */
     if (cb.data === 'edit') {
       return
     }
 
-    const chatId = cb.from.id
+    const stop = TgService.sendTyping(chatId)
+    stop()
 
     try {
+      /* UTILS */
       const incrementRegistrationStep = () => {
         this.cache.reg[chatId].updatedAt = Date.now()
         this.cache.reg[chatId].step++
@@ -512,10 +542,12 @@ class TgController {
 
         /* SITTIBGS BUTTOBS */
         case 'settings_service_info':
+          if (!this.cache.context[chatId]) {
+            this.createCacheContext(chatId)
+          }
+          this.cache.context[chatId].service = true
+          TgService.sendQueryInput(chatId)
           break
-        // case 'settings_random':
-        //   await TgService.sendRandomModels(chatId, getQueryId(cb.data))
-        //   break
         case 'tarifs_send_code':
           if (!this.cache.settings[chatId]) {
             this.createCacheSettings(chatId)
@@ -528,8 +560,10 @@ class TgController {
           TgService.sendTarifs(chatId)
           break
         case 'settings_limits':
+          TgService.sendMyTarif(chatId)
           break
         case 'settings_version':
+          TgService.sendVersion(chatId)
           break
 
         default:
@@ -537,7 +571,6 @@ class TgController {
           if (cb.data?.startsWith('reg_lang_')) {
             this.cache.reg[chatId].language = cb.data.replace('reg_lang_', '') as Language
             incrementRegistrationStep()
-            return
           }
 
           /* TARIF TYPE */
@@ -545,14 +578,12 @@ class TgController {
             const type = cb.data.replace('tarif_type_', '') as TarifType
             this.cache.tarif[chatId].type = type
             incrementTarifStep()
-            return
           }
 
           /* TARIF DURATION */
           if (cb.data?.startsWith('tarif_duration_')) {
             this.cache.tarif[chatId].duration = parseInt(cb.data.replace('tarif_duration_', ''))
             incrementTarifStep()
-            return
           }
 
           /* TARIF ID AND NAME */
@@ -561,7 +592,6 @@ class TgController {
             this.cache.code[chatId].tarifId = getQueryId(cb.data)
             this.cache.code[chatId].step++
             TgService.createCode(chatId, this.cache.code[chatId])
-            return
           }
 
           /* CURRENCY */
@@ -571,25 +601,25 @@ class TgController {
             this.cache.price[chatId][currency].currency = currency
             this.cache.tarif[chatId].currency = currency
             incrementTarifStep()
-            return
           }
 
           /* MENU OPTIONS */
           if (cb.data?.startsWith('menu_')) {
             TgService.sendMessage(chatId, '/' + cb.data.replace('menu_', ''))
-            return
           }
 
           /* SETTINGS ALL TARIF BUTTONS */
           if (cb.data?.startsWith('settings_tarifs_')) {
             TgService.sendTarifById(chatId, getQueryId(cb.data))
-            return
           }
 
           /* RANDOM MODEL AND VALUES */
           if (cb.data?.startsWith('settings_random_model_')) {
-            TgService.sendRandomValues(chatId, getQueryName(cb.data), getQueryId(cb.data))
-            return
+            TgService.sendRandomValues(
+              chatId,
+              getQueryName(cb.data) as RandomModels,
+              getQueryId(cb.data),
+            )
           }
 
           if (cb.data?.startsWith('settings_random_value')) {
@@ -599,12 +629,10 @@ class TgController {
               getRandomModelValue(cb.data),
               getQueryId(cb.data),
             )
-            return
           }
 
           if (cb.data?.startsWith('settings_random_')) {
             TgService.sendRandomModels(chatId, getQueryId(cb.data))
-            return
           }
 
           /* CHANGE NAME */
@@ -615,7 +643,6 @@ class TgController {
             this.cache.settings[chatId].name = true
 
             TgService.sendNameChoice(chatId, getToggleValue(cb.data))
-            return
           }
 
           /* CHANGE CONTEXT LENGTH */
@@ -629,17 +656,14 @@ class TgController {
               getContextValue(cb.data),
               getContextId(cb.data),
             )
-            return
           }
 
           if (cb.data?.startsWith('context_length_')) {
             TgService.changeContextLength(chatId, getContextValue(cb.data), getContextId(cb.data))
-            return
           }
           /* LANGUAGE TOGGLE*/
           if (cb.data?.startsWith('settings_lang_')) {
             TgService.sendLanguages(chatId, getQueryId(cb.data))
-            return
           }
 
           if (cb.data?.startsWith('language_toggle_')) {
@@ -648,7 +672,6 @@ class TgController {
               getToggleId(cb.data),
               getToggleValue(cb.data) as Language,
             )
-            return
           }
 
           /* CONTEXT TOGGLE*/
@@ -659,18 +682,8 @@ class TgController {
               getToggleValue(cb.data),
               !!(this.cache.settings[chatId] || this.cache.context[chatId]),
             )
-            return
           }
       }
-
-      /* ADD CHECKBOX TO SEARCHED BUTTON */
-      TgService.editButton(
-        chatId,
-        cb.message?.message_id!,
-        cb.data!,
-        '✅ ',
-        cb.message?.reply_markup!,
-      )
     } catch (err: any) {
       this.sendError(chatId, err.message)
     }
