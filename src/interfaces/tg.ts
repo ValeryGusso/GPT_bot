@@ -5,6 +5,13 @@ type ItemWithUpdate = {
 }
 
 export type ICache = {
+  [key: string]:
+    | RegistrationCache
+    | TarifCache
+    | PriceCache
+    | CodeCache
+    | SettingsCache
+    | ContextCache
   reg: RegistrationCache
   tarif: TarifCache
   price: PriceCache
@@ -30,7 +37,6 @@ export interface IReg extends ItemWithUpdate {
   code: string
   language: Language
   step: number
-  updatedAt: number
 }
 
 export interface ITarif extends ItemWithUpdate {
@@ -45,20 +51,10 @@ export interface ITarif extends ItemWithUpdate {
   type: TarifType
   currency?: Currency
   step: number
-  updatedAt: number
 }
-
-// export type IPrice = Record<Currency, IPriceItem>
-
-// export interface IPriceItem extends ItemWithUpdate {
-//   value: number
-//   currency: Currency
-//   updatedAt: number
-// }
 
 export interface IPrice extends ItemWithUpdate {
   prices: IPriceItem[]
-  updatedAt: number
 }
 
 export interface IPriceItem extends ItemWithUpdate {
@@ -72,18 +68,15 @@ export interface ICode extends ItemWithUpdate {
   step: number
   tarifId: number
   tarifName: string
-  updatedAt: number
 }
 
 export interface ISettings extends ItemWithUpdate {
   name: boolean
   promo: boolean
-  updatedAt: number
 }
 
 export interface IContext extends ItemWithUpdate {
   length: boolean
   service: boolean
   random: boolean
-  updatedAt: number
 }

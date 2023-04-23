@@ -33,10 +33,10 @@ class GPTService {
       case 'topP':
         options.top_p = user?.settings?.topP
         break
-      // case 'both':
-      // options.temperature = user?.settings?.temperature
-      // options.top_p = user?.settings?.topP
-      //   break
+      case 'both':
+        options.temperature = user?.settings?.temperature
+        options.top_p = user?.settings?.topP
+        break
     }
 
     const res = await this.API.post<GPTResponse>('/v1/chat/completions', {
@@ -89,10 +89,10 @@ class GPTService {
       case 'topP':
         options.top_p = user?.settings?.topP
         break
-      // case 'both':
-      // options.temperature = user?.settings?.temperature
-      // options.top_p = user?.settings?.topP
-      //   break
+      case 'both':
+        options.temperature = user?.settings?.temperature
+        options.top_p = user?.settings?.topP
+        break
     }
 
     const res = await this.API.post<GPTResponse>('/v1/chat/completions', options)

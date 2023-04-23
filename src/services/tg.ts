@@ -745,6 +745,7 @@ class TgService {
             [
               { text: 'Temperature', callback_data: 'settings_random_model_temperature_' + userId },
               { text: 'Top_p', callback_data: 'settings_random_model_topP_' + userId },
+              { text: 'Обе сразу', callback_data: 'settings_random_model_both_' + userId },
             ],
             this.backToSettingsButton,
           ],

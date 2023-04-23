@@ -41,10 +41,11 @@ class TgController {
 
   private clearCache() {
     for (const primaryKey in this.cache) {
-      const field = this.cache[primaryKey as KeysOfCache]
+      const field = this.cache[primaryKey]
+
       for (const chatId in field) {
-        if (this.cache[primaryKey as KeysOfCache][chatId].updatedAt + hour < Date.now()) {
-          delete this.cache[primaryKey as KeysOfCache][chatId]
+        if (this.cache[primaryKey][chatId].updatedAt + hour < Date.now()) {
+          delete this.cache[primaryKey][chatId]
         }
       }
     }
