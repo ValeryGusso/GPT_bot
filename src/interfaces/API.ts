@@ -1,12 +1,14 @@
 import { MessageRole } from '@prisma/client'
 
 export interface AnswerData {
-  message: {
-    role: MessageRole
-    content: string
-  }
+  message: IMessage
   finish_reason: string
   index: number
+}
+
+export interface IMessage {
+  role: MessageRole
+  content: string
 }
 
 interface IUsege {

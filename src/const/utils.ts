@@ -1,8 +1,9 @@
 import { RandomModels } from '@prisma/client'
 import { FullUser } from '../interfaces/db.js'
+import { day } from './const.js'
 
 export function timestampToDate(ts: bigint) {
-  return `Предоставляет доступ на ${Math.floor(Number(ts) / 24 / 60 / 60 / 1000)} дней`
+  return `Предоставляет доступ на ${Math.floor(Number(ts) / day)} дней`
 }
 
 export function getQueryId(str: string) {
@@ -38,5 +39,44 @@ export function getRandomModelValue(str: string) {
 }
 
 export function isFullUser(user: FullUser | null | undefined): user is FullUser {
-  return !!user?.id
+  return !!user?.chatId
+}
+
+export function safeMarkdown(str: string) {
+  return str
+}
+
+export function validateMarkdown(markdown: string): boolean {
+  let valid = true
+  const stack: string[] = []
+
+  for (let i = 0; i < markdown.length; i++) {
+    const char = markdown[i]
+
+    if (char === '*') {
+      if (stack[stack.length - 1] === '*') {
+        stack.pop()
+      } else {
+        stack.push('*')
+      }
+    } else if (char === '_') {
+      if (stack[stack.length - 1] === '_') {
+        stack.pop()
+      } else {
+        stack.push('_')
+      }
+    } else if (char === '`') {
+      if (stack[stack.length - 1] === '`') {
+        stack.pop()
+      } else {
+        stack.push('`')
+      }
+    }
+  }
+
+  if (stack.length > 0) {
+    valid = false
+  }
+
+  return valid
 }

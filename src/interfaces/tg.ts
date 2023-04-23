@@ -1,5 +1,9 @@
 import { Currency, Language, TarifType } from '@prisma/client'
 
+type ItemWithUpdate = {
+  updatedAt: number
+}
+
 export type ICache = {
   reg: RegistrationCache
   tarif: TarifCache
@@ -9,10 +13,6 @@ export type ICache = {
   context: ContextCache
 }
 
-export type KeysOfCache = keyof ICache
-export type PriceCacheKey = keyof PriceCache
-export type CacheItem = RegistrationCache | TarifCache | PriceCache | CodeCache
-
 export type RegistrationCache = Record<string, IReg>
 export type TarifCache = Record<string, ITarif>
 export type PriceCache = Record<string, IPrice>
@@ -20,7 +20,12 @@ export type CodeCache = Record<string, ICode>
 export type SettingsCache = Record<string, ISettings>
 export type ContextCache = Record<string, IContext>
 
-export interface IReg {
+export type KeysOfCache = keyof ICache
+
+export type PriceCacheKey = keyof PriceCache
+export type CacheItem = RegistrationCache | TarifCache | PriceCache | CodeCache
+
+export interface IReg extends ItemWithUpdate {
   name: string
   code: string
   language: Language
@@ -28,7 +33,7 @@ export interface IReg {
   updatedAt: number
 }
 
-export interface ITarif {
+export interface ITarif extends ItemWithUpdate {
   name: string
   title: string
   description: string
@@ -43,15 +48,25 @@ export interface ITarif {
   updatedAt: number
 }
 
-export type IPrice = Record<Currency, IPriceItem>
+// export type IPrice = Record<Currency, IPriceItem>
 
-export interface IPriceItem {
-  value: number
-  currency: Currency
+// export interface IPriceItem extends ItemWithUpdate {
+//   value: number
+//   currency: Currency
+//   updatedAt: number
+// }
+
+export interface IPrice extends ItemWithUpdate {
+  prices: IPriceItem[]
   updatedAt: number
 }
 
-export interface ICode {
+export interface IPriceItem extends ItemWithUpdate {
+  value: number
+  currency: Currency
+}
+
+export interface ICode extends ItemWithUpdate {
   value: string
   limit: number
   step: number
@@ -60,13 +75,15 @@ export interface ICode {
   updatedAt: number
 }
 
-export interface ISettings {
+export interface ISettings extends ItemWithUpdate {
   name: boolean
   promo: boolean
+  updatedAt: number
 }
 
-export interface IContext {
+export interface IContext extends ItemWithUpdate {
   length: boolean
   service: boolean
   random: boolean
+  updatedAt: number
 }

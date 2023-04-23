@@ -118,8 +118,8 @@ class DBService {
   }
 
   async createMessage(role: MessageRole, content: string, user: FullUser) {
-    /* REMOVE FIRST MESSGAGE WHEN CONFEXT LIMIT IS OVER */
-    if (user.context?.length! >= user.activity?.tarif.maxContext!) {
+    /* REMOVE FIRST MESSAGE WHEN CONTEXT LIMIT IS OVER */
+    if (user.context?.value.length! >= user.activity?.tarif.maxContext!) {
       const idList: number[] = []
 
       user.context?.value.forEach((el) => {
@@ -136,15 +136,13 @@ class DBService {
     }
 
     /* ADD NEW MESSAGE */
-    const message = await this.prisma.message.create({
+    await this.prisma.message.create({
       data: {
         role,
         content,
         contextId: user.context?.id!,
       },
     })
-
-    return message
   }
 
   async addPrice(priceId: number, tarifId: number) {
@@ -164,39 +162,39 @@ class DBService {
     return true
   }
 
-  async addMessage(messageId: number, contentId: number) {
-    await this.prisma.context.update({
-      where: {
-        id: contentId,
-      },
-      data: {
-        value: {
-          connect: {
-            id: messageId,
-          },
-        },
-      },
-    })
+  // async addMessage(messageId: number, contentId: number) {
+  //   await this.prisma.context.update({
+  //     where: {
+  //       id: contentId,
+  //     },
+  //     data: {
+  //       value: {
+  //         connect: {
+  //           id: messageId,
+  //         },
+  //       },
+  //     },
+  //   })
 
-    return true
-  }
+  //   return true
+  // }
 
-  async addTarif(activityId: number, tarifId: number) {
-    await this.prisma.tarif.update({
-      where: {
-        id: tarifId,
-      },
-      data: {
-        activity: {
-          connect: {
-            id: activityId,
-          },
-        },
-      },
-    })
+  // async addTarif(activityId: number, tarifId: number) {
+  //   await this.prisma.tarif.update({
+  //     where: {
+  //       id: tarifId,
+  //     },
+  //     data: {
+  //       activity: {
+  //         connect: {
+  //           id: activityId,
+  //         },
+  //       },
+  //     },
+  //   })
 
-    return true
-  }
+  //   return true
+  // }
 
   async clearContext(userOrId: FullUser | number) {
     if (typeof userOrId === 'number') {
