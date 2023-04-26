@@ -1,7 +1,7 @@
 import { AxiosInstance } from 'axios'
 import API from '../API/API.js'
-import { GPTResponse, IMessage } from '../interfaces/API.js'
-import { IResult, IOptions } from '../interfaces/gpt.js'
+import { GPTResponse } from '../interfaces/API.js'
+import { IResult, IOptions, IMessage } from '../interfaces/gpt.js'
 import { MessageRole } from '@prisma/client'
 import { FullUser } from '../interfaces/db.js'
 import DBService from './db.js'
@@ -13,42 +13,45 @@ class GPTService {
     this.API = API
   }
 
-  async send(msg: string, user: FullUser) {
+  private createOptions(user: FullUser, messages: IMessage[]) {
     const options: IOptions = {
       model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: MessageRole.user,
-          content: msg,
-        },
-      ],
+      messages,
       temperature: undefined,
       top_p: undefined,
     }
 
     switch (user.settings?.randomModel) {
       case 'temperature':
-        options.temperature = user?.settings?.temperature
+        options.temperature = user.settings.temperature
         break
       case 'topP':
-        options.top_p = user?.settings?.topP
+        options.top_p = user.settings.topP
         break
       case 'both':
-        options.temperature = user?.settings?.temperature
-        options.top_p = user?.settings?.topP
+        options.temperature = user.settings.temperature
+        options.top_p = user.settings.topP
         break
     }
+    return options
+  }
 
-    const res = await this.API.post<GPTResponse>('/v1/chat/completions', {
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: MessageRole.user,
-          content: msg,
-        },
-      ],
-      temperature: 0.7,
-    })
+  async send(msg: string, user: FullUser) {
+    const message: IMessage[] = [
+      {
+        role: MessageRole.user,
+        content: msg,
+        name: user.name,
+      },
+    ]
+
+    if (user.context?.useServiceInfo) {
+      message.unshift({ role: MessageRole.system, content: user.context.serviceInfo })
+    }
+
+    const options = this.createOptions(user, message)
+
+    const res = await this.API.post<GPTResponse>('/v1/chat/completions', options)
 
     console.log(res.data.choices[0].message.content)
 
@@ -72,28 +75,14 @@ class GPTService {
     const messages: IMessage[] = []
 
     user.context?.value.forEach((msg) => {
-      messages.push({ role: msg.role, content: msg.content })
+      messages.push({ role: msg.role, content: msg.content, name: user.name })
     })
 
-    const options: IOptions = {
-      model: 'gpt-3.5-turbo',
-      messages: messages,
-      temperature: undefined,
-      top_p: undefined,
+    if (user.context?.useServiceInfo) {
+      messages.unshift({ role: MessageRole.system, content: user.context.serviceInfo })
     }
 
-    switch (user.settings?.randomModel) {
-      case 'temperature':
-        options.temperature = user?.settings?.temperature
-        break
-      case 'topP':
-        options.top_p = user?.settings?.topP
-        break
-      case 'both':
-        options.temperature = user?.settings?.temperature
-        options.top_p = user?.settings?.topP
-        break
-    }
+    const options = this.createOptions(user, messages)
 
     const res = await this.API.post<GPTResponse>('/v1/chat/completions', options)
 

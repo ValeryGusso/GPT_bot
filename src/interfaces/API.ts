@@ -1,14 +1,9 @@
-import { MessageRole } from '@prisma/client'
+import { IMessage } from './gpt.js'
 
 export interface AnswerData {
   message: IMessage
   finish_reason: string
   index: number
-}
-
-export interface IMessage {
-  role: MessageRole
-  content: string
 }
 
 interface IUsege {

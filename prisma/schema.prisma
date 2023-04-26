@@ -25,7 +25,7 @@ model User {
 
 model Activity {
   id         Int      @id @default(autoincrement())
-  usage      Int      @default(0)
+  totalUsage Int      @default(0)
   dailyUsage Int      @default(0)
   expiresIn  DateTime @default(dbgenerated("NOW() + interval '1 month'"))
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -44,7 +44,7 @@ model Settings {
   topP        Float        @default(0.7)
   randomModel RandomModels @default(temperature)
   model       String       @default("gpt-3.5-turbo")
-  language    Language
+  language    Language     @default(ru)
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      Int          @unique
   createtAt   DateTime     @default(now())
@@ -54,15 +54,16 @@ model Settings {
 }
 
 model Context {
-  id          Int       @id @default(autoincrement())
-  useContext  Boolean   @default(false)
-  value       Message[]
-  length      Int       @default(10) @db.SmallInt
-  serviceInfo String    @default("")
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      Int       @unique
-  createtAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  useContext     Boolean   @default(false)
+  context        Message[]
+  length         Int       @default(10) @db.SmallInt
+  serviceInfo    String    @default("")
+  useServiceInfo Boolean   @default(false)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         Int       @unique
+  createtAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([id, userId])
 }
@@ -71,6 +72,7 @@ model Message {
   id        Int         @id @default(autoincrement())
   role      MessageRole
   content   String
+  name      String?
   context   Context?    @relation(fields: [contextId], references: [id], onDelete: Cascade)
   contextId Int?
   createtAt DateTime    @default(now())
@@ -96,7 +98,7 @@ model Tarif {
   title       String     @unique
   description String
   image       String
-  limit       Int
+  totalLimit  Int
   dailyLimit  Int
   maxContext  Int        @db.SmallInt
   duration    BigInt     @default(2592000000) @db.BigInt
@@ -139,6 +141,7 @@ model Price {
 enum MessageRole {
   user
   assistant
+  system
 }
 
 enum RandomModels {

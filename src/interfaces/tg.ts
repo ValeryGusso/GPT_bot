@@ -4,20 +4,27 @@ type ItemWithUpdate = {
   updatedAt: number
 }
 
+type ICacheItem =
+  | RegistrationCache
+  | TarifCache
+  | PriceCache
+  | CodeCache
+  | SettingsCache
+  | ContextCache
+  | ContextLanguage
+
+// type ICacheKeys = 'reg' | 'tarif' | 'price' | 'code' | 'settings' | 'context'
+// [key: ICacheKeys] : ICacheItem
+
 export type ICache = {
-  [key: string]:
-    | RegistrationCache
-    | TarifCache
-    | PriceCache
-    | CodeCache
-    | SettingsCache
-    | ContextCache
+  [key: string]: ICacheItem
   reg: RegistrationCache
   tarif: TarifCache
   price: PriceCache
   code: CodeCache
   settings: SettingsCache
   context: ContextCache
+  language: ContextLanguage
 }
 
 export type RegistrationCache = Record<string, IReg>
@@ -26,8 +33,7 @@ export type PriceCache = Record<string, IPrice>
 export type CodeCache = Record<string, ICode>
 export type SettingsCache = Record<string, ISettings>
 export type ContextCache = Record<string, IContext>
-
-export type KeysOfCache = keyof ICache
+export type ContextLanguage = Record<string, ILanguage>
 
 export type PriceCacheKey = keyof PriceCache
 export type CacheItem = RegistrationCache | TarifCache | PriceCache | CodeCache
@@ -79,4 +85,9 @@ export interface IContext extends ItemWithUpdate {
   length: boolean
   service: boolean
   random: boolean
+  useServiceInfo: boolean
+}
+
+export interface ILanguage extends ItemWithUpdate {
+  lang: Language
 }

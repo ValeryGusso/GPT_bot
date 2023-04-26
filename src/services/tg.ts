@@ -1,6 +1,7 @@
 import TelegramBot, { InlineKeyboardButton, InlineKeyboardMarkup } from 'node-telegram-bot-api'
 import GPTService from '../services/gpt.js'
 import DBService from './db.js'
+import TextService from './text.js'
 import TgController from '../controllers/tg.js'
 import { ICode, IPriceItem, IReg, ITarif } from '../interfaces/tg.js'
 import { FullUser } from '../interfaces/db.js'
@@ -18,11 +19,11 @@ class TgService {
 
   /* BUTTONS */
   private readonly backToSettingsButton: InlineKeyboardButton[] = [
-    { text: 'Вернуться к настройкам', callback_data: `settings_show` },
+    { text: 'Перейти в меню', callback_data: `show_info` },
+    { text: 'Вернуться к настройкам', callback_data: `show_settings` },
   ]
-  private readonly backToMenuButton: InlineKeyboardButton[] = [
-    { text: 'Вернуться в меню', callback_data: `show_info` },
-  ]
+  private readonly backToMenuButton: InlineKeyboardButton[] = [{ text: 'Вернуться в меню', callback_data: `show_menu` }]
+  private readonly contactMeButton: InlineKeyboardButton[] = [{ text: 'Связаться со мной', url: 'https://t.me/gusso' }]
   private startChatButton(type: 'back' | 'start'): InlineKeyboardButton[] {
     return [
       {
@@ -56,6 +57,10 @@ class TgService {
   }
 
   /* UTILS */
+  private async getLang(chatId: number) {
+    return await TgController.getUserLanguage(chatId)
+  }
+
   getBot() {
     return this.bot
   }
@@ -71,8 +76,8 @@ class TgService {
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: 'Информация о боте', callback_data: 'welcome_info' }],
-            [{ text: 'Начать!', callback_data: 'welcome_start' }],
+            [{ text: 'Информация о боте', callback_data: 'show_info' }],
+            [{ text: 'Начать!', callback_data: 'reg_start' }],
           ],
         },
       },
@@ -87,7 +92,7 @@ class TgService {
         inline_keyboard: [
           [
             { text: 'Перейти к меню', callback_data: 'show_menu' },
-            { text: 'Перейти к настройкам', callback_data: 'settings_show' },
+            { text: 'Перейти к настройкам', callback_data: 'show_settings' },
           ],
           this.startChatButton('start'),
         ],
@@ -95,13 +100,7 @@ class TgService {
     })
   }
 
-  async editButton(
-    chatId: number,
-    messageId: number,
-    query: string,
-    replacer: string,
-    marcup: InlineKeyboardMarkup,
-  ) {
+  async editButton(chatId: number, messageId: number, query: string, replacer: string, marcup: InlineKeyboardMarkup) {
     const newMarkup: InlineKeyboardMarkup = {
       inline_keyboard: [],
     }
@@ -147,15 +146,21 @@ class TgService {
 
   /* MENU */
   async sendMenu(chatId: number) {
+    const user = await DBService.getByChatId(chatId)
     const inline_keyboard: InlineKeyboardButton[][] = [
       [
         { text: 'Подсказки', callback_data: 'show_info' },
         { text: 'О боте', callback_data: 'show_about' },
       ],
-      this.startChatButton('start'),
     ]
 
-    await this.bot.sendMessage(chatId, 'Меню:', {
+    if (user) {
+      inline_keyboard.push(this.backToSettingsButton, this.startChatButton('start'))
+    } else {
+      inline_keyboard.push([{ text: 'Зарегистрироваться!', callback_data: 'reg_start' }])
+    }
+
+    await this.bot.sendMessage(chatId, 'Меню', {
       reply_markup: {
         inline_keyboard,
       },
@@ -163,8 +168,10 @@ class TgService {
   }
 
   async sendAbout(chatId: number) {
-    this.bot.sendMessage(chatId, 'about', {
-      reply_markup: { inline_keyboard: [this.backToMenuButton, this.startChatButton('start')] },
+    this.bot.sendMessage(chatId, TextService.about('ru'), {
+      reply_markup: {
+        inline_keyboard: [this.backToMenuButton, this.contactMeButton],
+      },
     })
   }
 
@@ -172,7 +179,7 @@ class TgService {
     this.bot.sendMessage(chatId, infoText, {
       parse_mode: validateMarkdown(infoText) ? 'Markdown' : undefined,
       reply_markup: {
-        inline_keyboard: [this.backToMenuButton, this.startChatButton('start')],
+        inline_keyboard: [this.backToMenuButton],
       },
     })
   }
@@ -215,9 +222,7 @@ class TgService {
           `Очень приятно, ${info.name}, меня зовут GPTBot.\nОсталось только отпределиться с тарифом! Если у тебя есть промо-код, то скорее отправь его мне. Но ничего страшного, если у тебя его нет, ты можешь воспользовалься бесплатным тарифом для знакомства с сервисом. Не переживай, насчёт лимитов, тебе их точно хватит!`,
           {
             reply_markup: {
-              inline_keyboard: [
-                [{ text: 'Попробовать бесплатно', callback_data: 'reg_welcome_tarif' }],
-              ],
+              inline_keyboard: [[{ text: 'Попробовать бесплатно', callback_data: 'reg_tarif_welcome' }]],
             },
           },
         )
@@ -230,25 +235,17 @@ class TgService {
             ? `Верно ли указаны следующие данные?
           \nТебя зовут: ${info.name}
           \nЯзык: ${info.language}
-          \n${
-            info.code === 'test_tarif'
-              ? 'Активировать пробный тариф'
-              : 'Воспользоваться промокодом ' + info.code
-          }`
+          \n${info.code === 'test_tarif' ? 'Активировать пробный тариф' : 'Воспользоваться промокодом ' + info.code}`
             : `Спасибо!\nМы практически закончили! Осталось только убедиться, что мы всё правильно записали, давай проверим ещё раз:
           \nТебя зовут: ${info.name}
           \nЯзык: ${info.language}
-          \n${
-            info.code === 'test_tarif'
-              ? 'Активировать пробный тариф'
-              : 'Воспользоваться промокодом ' + info.code
-          }`,
+          \n${info.code === 'welcome' ? 'Активировать пробный тариф' : 'Воспользоваться промокодом ' + info.code}`,
           {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
                 [{ text: 'Да, всё верно!', callback_data: 'reg_confirm' }],
-                [{ text: 'Заполнить ещё раз', callback_data: 'reg_reset' }],
+                [{ text: 'Заполнить ещё раз', callback_data: 'reg_start' }],
               ],
             },
           },
@@ -257,15 +254,11 @@ class TgService {
 
       case 5:
         await DBService.createUser(chatId, info)
-        this.bot.sendMessage(
-          chatId,
-          'Регистрация прошла успешно, поздравляю! Теперь тебе доступны все функции бота!',
-          {
-            reply_markup: {
-              inline_keyboard: [this.startChatButton('start')],
-            },
+        this.bot.sendMessage(chatId, 'Регистрация прошла успешно, поздравляю! Теперь тебе доступны все функции бота!', {
+          reply_markup: {
+            inline_keyboard: [this.startChatButton('start')],
           },
-        )
+        })
         break
 
       default:
@@ -275,16 +268,17 @@ class TgService {
 
   /* CODE */
   async createCode(chatId: number, info: ICode) {
+    console.log(info.step)
     switch (info.step) {
-      case 0:
+      case 1:
         await this.bot.sendMessage(chatId, 'Введи код:')
         break
 
-      case 1:
+      case 2:
         await this.bot.sendMessage(chatId, 'Укажи лимит использования')
         break
 
-      case 2:
+      case 3:
         const buttons = await this.getTarifButtons('code_tarif_')
 
         await this.bot.sendMessage(chatId, `Выбери тариф`, {
@@ -300,7 +294,7 @@ class TgService {
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: 'Заполнить ещё раз', callback_data: 'code_reset' }],
+                [{ text: 'Заполнить ещё раз', callback_data: 'code_add_new' }],
                 [{ text: 'Подтвердить', callback_data: 'code_confirm' }],
               ],
             },
@@ -308,9 +302,10 @@ class TgService {
         )
         break
       case 5:
+        await DBService.createCode(info)
         await this.bot.sendMessage(
           chatId,
-          `Код ${info.value} для тарифа ${info.tarifName} с лимотом использования ${info.limit} успешно создан!`,
+          `Код ${info.value} для тарифа ${info.tarifName} с лимитом использования ${info.limit} успешно создан!`,
           {
             reply_markup: {
               inline_keyboard: [
@@ -348,16 +343,13 @@ class TgService {
       await this.bot.sendMessage(
         chatId,
         access.validTarif
-          ? `К сожалению вы исчерпали ${!access.daily ? 'дневной' : ''} ${
-              !access.daily && !access.total ? 'и' : ''
-            }  ${!access.total ? 'общий' : ''} лимит использования.`
+          ? `К сожалению вы исчерпали ${!access.daily ? 'дневной' : ''} ${!access.daily && !access.total ? 'и' : ''}  ${
+              !access.total ? 'общий' : ''
+            } лимит использования.`
           : 'К сожалению тариф более не действителен, но всегда можно перейти на стартовую версию или обновиться до расширенной!',
         {
           reply_markup: {
-            inline_keyboard: [
-              [{ text: 'Перейти к тарифам', callback_data: 'tarifs_show_all' }],
-              this.backToSettingsButton,
-            ],
+            inline_keyboard: [[{ text: 'Перейти к тарифам', callback_data: 'show_tarifs' }], this.backToSettingsButton],
           },
         },
       )
@@ -373,9 +365,7 @@ class TgService {
       await DBService.createMessage(MessageRole.user, text, user)
     }
 
-    const res = user.context?.useContext
-      ? await GPTService.sendWithContext(chatId)
-      : await GPTService.send(text, user)
+    const res = user.context?.useContext ? await GPTService.sendWithContext(chatId) : await GPTService.send(text, user)
 
     stop()
 
@@ -390,7 +380,7 @@ class TgService {
       const usage = `\n\n--- --- --- --- --- --- --- --- ---
       \nИспользовано ${res.tokens} токенов. 
       \nОсталось: сегодня: ${user.activity?.tarif?.dailyLimit! - activity.dailyUsage} / всего: ${
-        user.activity?.tarif?.limit! - activity.usage
+        user.activity?.tarif?.totalLimit! - activity.totalUsage
       }\n\n--- --- --- --- --- --- --- --- ---`
 
       await this.bot.sendMessage(chatId, res.message + usage, {
@@ -400,10 +390,10 @@ class TgService {
             ? [
                 [
                   { text: 'Сбросить контекст 🔄', callback_data: 'context_reset' },
-                  { text: 'Отключить контекст', callback_data: `context_toggle_${user.id}_off` },
+                  { text: 'Отключить контекст', callback_data: `toggle_context_${user.id}_off` },
                 ],
               ]
-            : [[{ text: 'Включить контекст', callback_data: `context_toggle_${user.id}_on` }]],
+            : [[{ text: 'Включить контекст', callback_data: `toggle_context_${user.id}_on` }]],
         },
       })
 
@@ -432,28 +422,35 @@ class TgService {
   async createTarif(chatId: number, info: ITarif, price: IPriceItem[]) {
     switch (info.step) {
       case 1:
-        this.bot.sendMessage(chatId, 'Кодовое название тарифа:')
+        await this.bot.sendMessage(chatId, 'Кодовое название тарифа:')
         break
+
       case 2:
-        this.bot.sendMessage(chatId, 'Титловое название тарифа:')
+        await this.bot.sendMessage(chatId, 'Титловое название тарифа:')
         break
+
       case 3:
-        this.bot.sendMessage(chatId, 'Описание:')
+        await this.bot.sendMessage(chatId, 'Описание:')
         break
+
       case 4:
-        this.bot.sendMessage(chatId, 'Пришли ссылку на изображение:')
+        await this.bot.sendMessage(chatId, 'Пришли ссылку на изображение:')
         break
+
       case 5:
-        this.bot.sendMessage(chatId, 'Общий лимит тарифа:')
+        await this.bot.sendMessage(chatId, 'Общий лимит тарифа:')
         break
+
       case 6:
-        this.bot.sendMessage(chatId, 'Дневной лимит тарифа:')
+        await this.bot.sendMessage(chatId, 'Дневной лимит тарифа:')
         break
+
       case 7:
-        this.bot.sendMessage(chatId, 'Максимальная длина контекста:')
+        await this.bot.sendMessage(chatId, 'Максимальная длина контекста:')
         break
+
       case 8:
-        this.bot.sendMessage(chatId, 'Длительность тарифа:', {
+        await this.bot.sendMessage(chatId, 'Длительность тарифа:', {
           reply_markup: {
             inline_keyboard: [
               [{ text: '1 месяц', callback_data: 'tarif_duration_' + month }],
@@ -468,8 +465,9 @@ class TgService {
           },
         })
         break
+
       case 9:
-        this.bot.sendMessage(chatId, 'Тип тарифа:', {
+        await this.bot.sendMessage(chatId, 'Тип тарифа:', {
           reply_markup: {
             inline_keyboard: [
               [{ text: 'Лимит', callback_data: 'tarif_type_' + TarifType.limit }],
@@ -478,8 +476,9 @@ class TgService {
           },
         })
         break
+
       case 10:
-        this.bot.sendMessage(chatId, 'Валюта:.', {
+        await this.bot.sendMessage(chatId, 'Валюта:.', {
           reply_markup: {
             inline_keyboard: [
               [
@@ -493,17 +492,18 @@ class TgService {
           },
         })
         break
+
       case 11:
-        this.bot.sendMessage(chatId, 'Цена:', {})
+        await this.bot.sendMessage(chatId, 'Цена:', {})
         break
+
       case 12:
-        let result = `Текущие ценники для тарифа ${info.name}\n`
-        // for (const key in price) {
-        result += `${
-          price[TgController.findPriceIndex(chatId, info.name)]
-        } ${TgController.findPriceIndex(chatId, info.name)} \n`
-        // }
-        this.bot.sendMessage(chatId, result, {
+        const message = price.reduce(
+          (acc, el) => acc + el.value + ' ' + el.currency + '\n',
+          `Текущие ценники для тарифа ${info.name}\n`,
+        )
+
+        await this.bot.sendMessage(chatId, message, {
           reply_markup: {
             inline_keyboard: [
               [{ text: 'Добавить ещё один прайс', callback_data: 'tarif_add_price' }],
@@ -512,8 +512,9 @@ class TgService {
           },
         })
         break
+
       case 13:
-        this.bot.sendMessage(
+        await this.bot.sendMessage(
           chatId,
           `Тариф ${info.name} / ${info.title} успешно создан!
           \nОписание: ${info.description} 
@@ -526,8 +527,8 @@ class TgService {
             reply_markup: {
               inline_keyboard: [
                 [
-                  { text: 'Создеть ещё 1 тариф', callback_data: 'show_menu' },
-                  { text: 'Вернуться в меню!', callback_data: 'tarif_add_new' },
+                  { text: 'Создать ещё 1 тариф', callback_data: 'tarif_add_new' },
+                  { text: 'Вернуться в меню!', callback_data: 'show_menu' },
                 ],
               ],
             },
@@ -551,8 +552,10 @@ class TgService {
     const description = `${tarif.title}
     \n${tarif.description}
     \n --- --- --- --- --- --- ---
-    \nТип: ${tarif.type}, доступен в течении ${timestampToDate(tarif.duration)}
-    \nЛимиты: дневной ${tarif.dailyLimit} / общий ${tarif.limit}
+    \nТип: ${tarif.type === 'limit' ? 'лимит запросов' : 'подписка'}, доступен в течении ${timestampToDate(
+      tarif.duration,
+    )}
+    \nЛимиты: дневной ${tarif.dailyLimit} / общий ${tarif.totalLimit}
     \nМаксимальная доступная длина контекста: ${tarif.maxContext}`
 
     this.bot.sendMessage(chatId, description, {
@@ -574,8 +577,8 @@ class TgService {
     const user = await DBService.getByChatId(chatId)
 
     const description = `Мой тариф ${user?.activity?.tarif.title}
-    \nОбщий лимит ${user?.activity?.tarif.limit} / ежедневный ${user?.activity?.tarif.dailyLimit}
-    \nОсталось ${user?.activity?.tarif.limit! - user?.activity?.usage!} / ${
+    \nОбщий лимит ${user?.activity?.tarif.totalLimit} / ежедневный ${user?.activity?.tarif.dailyLimit}
+    \nОсталось ${user?.activity?.tarif.totalLimit! - user?.activity?.totalUsage!} / ${
       user?.activity?.tarif.dailyLimit! - user?.activity?.dailyUsage!
     }
     \nЗаканчивается ${user?.activity?.expiresIn.toLocaleDateString()}`
@@ -601,20 +604,18 @@ class TgService {
 
     const buttons = [
       [
+        { text: 'Параметры запросов', callback_data: 'toggle_service_info' },
         { text: 'Параметры запросов', callback_data: 'settings_service_info' },
         { text: 'Рандомайзер', callback_data: 'settings_random_' + safeUser.id },
       ],
       [
         {
           text: safeUser.context?.useContext ? 'Отключить контекст' : 'Включить контекст',
-          callback_data: `context_toggle_${safeUser.id}_${
-            safeUser.context?.useContext ? 'off' : 'on'
-          }`,
+          callback_data: `toggle_context_${safeUser.id}_${safeUser.context?.useContext ? 'off' : 'on'}`,
         },
         {
-          text: 'Максимальная длина контекста',
-          callback_data:
-            'context_change_length_' + safeUser.id + '_' + safeUser.activity?.tarif.maxContext,
+          text: 'Длина контекста',
+          callback_data: 'context_change_length_' + safeUser.id + '_' + safeUser.activity?.tarif.maxContext,
         },
       ],
       [
@@ -622,12 +623,12 @@ class TgService {
         { text: 'Язык', callback_data: 'settings_lang_' + safeUser.id },
       ],
       [
-        { text: 'Все тарифы', callback_data: 'tarifs_show_all' },
+        { text: 'Все тарифы', callback_data: 'show_tarifs' },
         { text: 'Ввести промокод', callback_data: 'tarifs_send_code' },
       ],
       [
-        { text: 'Версия GPT', callback_data: 'settings_version' },
-        { text: 'Мои лимиты', callback_data: 'settings_limits' },
+        { text: 'Версия GPT', callback_data: 'show_version' },
+        { text: 'Мои лимиты', callback_data: 'show_limits' },
       ],
       this.startChatButton('back'),
     ]
@@ -653,8 +654,8 @@ class TgService {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: 'Русский', callback_data: 'language_toggle_' + userId + '_' + Language.ru },
-            { text: 'English', callback_data: 'language_toggle_' + userId + '_' + Language.en },
+            { text: 'Русский', callback_data: 'toggle_language_' + userId + '_' + Language.ru },
+            { text: 'English', callback_data: 'toggle_language_' + userId + '_' + Language.en },
           ],
           this.backToSettingsButton,
         ],
@@ -669,7 +670,7 @@ class TgService {
           [
             {
               text: `Оставить текущее (${oldName}) и вернуться обратно`,
-              callback_data: `settings_show`,
+              callback_data: `show_settings`,
             },
           ],
         ],
@@ -814,13 +815,13 @@ class TgService {
   }
 
   async sendQueryInput(chatId: number) {
-    await this.bot.sendMessage(
-      chatId,
-      'Укажи дополнительные парамтры запросов.\nОни будут каждый раз отправляться вместе с сообщением. Бот не будет на них отвечать, но учтёт их при составлении ответа.',
-      {
-        reply_markup: { inline_keyboard: [this.backToSettingsButton] },
-      },
-    )
+    const user = await DBService.getByChatId(chatId)
+    const serviceInfo = `Укажи дополнительные парамтры запросов.\nОни будут каждый раз отправляться вместе с сообщением. Бот не будет на них отвечать, но учтёт их при составлении ответа.
+    ${user?.context?.serviceInfo ? '\nТекущие параметры: ' + user.context.serviceInfo : ''}`
+
+    await this.bot.sendMessage(chatId, serviceInfo, {
+      reply_markup: { inline_keyboard: [this.backToSettingsButton] },
+    })
   }
 
   async changeQuery(chatId: number, query: string, user: FullUser) {
@@ -846,15 +847,11 @@ class TgService {
   /* TOGGLE */
   async languageToggle(chatId: number, id: number, lang: Language) {
     await DBService.languageToggle(id, lang)
-    this.bot.sendMessage(
-      chatId,
-      `Язык был успешно изменён на ${lang === 'ru' ? 'русский' : 'английский'}`,
-      {
-        reply_markup: {
-          inline_keyboard: [this.backToSettingsButton],
-        },
+    this.bot.sendMessage(chatId, `Язык был успешно изменён на ${lang === 'ru' ? 'русский' : 'английский'}`, {
+      reply_markup: {
+        inline_keyboard: [this.backToSettingsButton],
       },
-    )
+    })
   }
 
   async contextToggle(chatId: number, userId: number, action: string, settings: boolean) {
@@ -865,10 +862,10 @@ class TgService {
         ? [
             [
               { text: 'Сбросить контекст 🔄', callback_data: 'context_reset' },
-              { text: 'Отключить контекст', callback_data: `context_toggle_${userId}_off` },
+              { text: 'Отключить контекст', callback_data: `toggle_context_${userId}_off` },
             ],
           ]
-        : [[{ text: 'Включить контекст', callback_data: `context_toggle_${userId}_on` }]]
+        : [[{ text: 'Включить контекст', callback_data: `toggle_context_${userId}_on` }]]
 
     if (settings) {
       buttons.push(this.backToSettingsButton)
@@ -876,15 +873,11 @@ class TgService {
 
     buttons.push(this.startChatButton('back'))
 
-    this.bot.sendMessage(
-      chatId,
-      `Контекст был успешно ${action === 'on' ? 'включен' : 'отключен'}`,
-      {
-        reply_markup: {
-          inline_keyboard: buttons,
-        },
+    this.bot.sendMessage(chatId, `Контекст был успешно ${action === 'on' ? 'включен' : 'отключен'}`, {
+      reply_markup: {
+        inline_keyboard: buttons,
       },
-    )
+    })
   }
 }
 

@@ -1,11 +1,5 @@
 import { Currency, Language, MessageRole, PrismaClient, RandomModels } from '@prisma/client'
-import {
-  CreateTarifArguments,
-  CreatePriceArguments,
-  FullUser,
-  FullTarif,
-  IAccess,
-} from '../interfaces/db.js'
+import { CreateTarifArguments, CreatePriceArguments, FullUser, FullTarif, IAccess } from '../interfaces/db.js'
 import { ICode, IReg } from '../interfaces/tg.js'
 import { tarifRelations, userRelations } from '../const/relations.js'
 
@@ -16,17 +10,14 @@ class DBService {
     this.prisma.$connect()
   }
 
-  async getByChatId(id: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { chatId: id },
+  /* GET */
+  async getByChatId(chatId: number) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { chatId },
       include: userRelations,
     })
 
-    if (!user) {
-      return null
-    } else {
-      return user
-    }
+    return user
   }
 
   async getAllTarifs() {
@@ -44,7 +35,8 @@ class DBService {
     return tarif as FullTarif
   }
 
-  async createUser(id: number, userInfo: IReg) {
+  /* CREATE */
+  async createUser(chatId: number, userInfo: IReg) {
     const code = await this.prisma.code.findUnique({ where: { value: userInfo.code } })
 
     if (!code?.tarifId) {
@@ -57,7 +49,7 @@ class DBService {
       throw new Error(`Tarif does not exist!`)
     }
 
-    const user = await this.prisma.user.create({ data: { chatId: id, name: userInfo.name } })
+    const user = await this.prisma.user.create({ data: { chatId, name: userInfo.name } })
     await this.prisma.token.create({ data: { userId: user.id } })
     await this.prisma.context.create({ data: { userId: user.id } })
     await this.prisma.settings.create({ data: { userId: user.id, language: userInfo.language } })
@@ -88,7 +80,7 @@ class DBService {
         title,
         description,
         image,
-        limit: limit,
+        totalLimit: limit,
         dailyLimit,
         type,
         maxContext,
@@ -145,57 +137,7 @@ class DBService {
     })
   }
 
-  async addPrice(priceId: number, tarifId: number) {
-    await this.prisma.tarif.update({
-      where: {
-        id: tarifId,
-      },
-      data: {
-        price: {
-          connect: {
-            id: priceId,
-          },
-        },
-      },
-    })
-
-    return true
-  }
-
-  // async addMessage(messageId: number, contentId: number) {
-  //   await this.prisma.context.update({
-  //     where: {
-  //       id: contentId,
-  //     },
-  //     data: {
-  //       value: {
-  //         connect: {
-  //           id: messageId,
-  //         },
-  //       },
-  //     },
-  //   })
-
-  //   return true
-  // }
-
-  // async addTarif(activityId: number, tarifId: number) {
-  //   await this.prisma.tarif.update({
-  //     where: {
-  //       id: tarifId,
-  //     },
-  //     data: {
-  //       activity: {
-  //         connect: {
-  //           id: activityId,
-  //         },
-  //       },
-  //     },
-  //   })
-
-  //   return true
-  // }
-
+  /* UPDATE */
   async clearContext(userOrId: FullUser | number) {
     if (typeof userOrId === 'number') {
       await this.prisma.message.deleteMany({ where: { context: { user: { chatId: userOrId } } } })
@@ -204,22 +146,6 @@ class DBService {
       await this.prisma.message.deleteMany({ where: { context: { userId: userOrId.id } } })
       return true
     }
-  }
-
-  async contextToggle(id: number, action: string) {
-    await this.prisma.context.update({
-      where: { userId: id },
-      data: { useContext: action === 'on' },
-    })
-  }
-
-  async languageToggle(id: number, lang: Language) {
-    await this.prisma.settings.update({
-      where: { userId: id },
-      data: {
-        language: lang,
-      },
-    })
   }
 
   async changeName(name: string, user: FullUser) {
@@ -258,17 +184,35 @@ class DBService {
     })
   }
 
-  async updateActivity(id: number, usage: number) {
+  async updateActivity(userId: number, usage: number) {
     const activity = await this.prisma.activity.update({
-      where: { userId: id },
+      where: { userId },
       data: {
-        usage: { increment: usage },
+        totalUsage: { increment: usage },
         dailyUsage: { increment: usage },
       },
     })
     return activity
   }
 
+  /* TOGGLE */
+  async contextToggle(userId: number, action: string) {
+    await this.prisma.context.update({
+      where: { userId },
+      data: { useContext: action === 'on' },
+    })
+  }
+
+  async languageToggle(userId: number, lang: Language) {
+    await this.prisma.settings.update({
+      where: { userId },
+      data: {
+        language: lang,
+      },
+    })
+  }
+
+  /* UTILS */
   async validateAccess(user: FullUser) {
     const access: IAccess = {
       daily: true,
@@ -294,7 +238,7 @@ class DBService {
     if (user.activity?.dailyUsage! > user.activity?.tarif?.dailyLimit!) {
       access.daily = false
     }
-    if (user.activity?.usage! > user.activity?.tarif?.limit!) {
+    if (user.activity?.totalUsage! > user.activity?.tarif?.totalLimit!) {
       access.total = false
     }
 
