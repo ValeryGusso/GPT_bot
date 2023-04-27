@@ -21,7 +21,7 @@ export type FullUser = Prisma.UserGetPayload<{
   include: {
     activity: { include: { tarif: true } }
     settings: true
-    context: { include: { value: true } }
+    context: { include: { context: true } }
     token: true
   }
 }>

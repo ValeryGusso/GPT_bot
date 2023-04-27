@@ -1,4 +1,4 @@
-import { Currency, Language, TarifType } from '@prisma/client'
+import { Currency, Language, RandomModels, TarifType } from '@prisma/client'
 
 type ItemWithUpdate = {
   updatedAt: number
@@ -12,9 +12,6 @@ type ICacheItem =
   | SettingsCache
   | ContextCache
   | ContextLanguage
-
-// type ICacheKeys = 'reg' | 'tarif' | 'price' | 'code' | 'settings' | 'context'
-// [key: ICacheKeys] : ICacheItem
 
 export type ICache = {
   [key: string]: ICacheItem
@@ -79,6 +76,15 @@ export interface ICode extends ItemWithUpdate {
 export interface ISettings extends ItemWithUpdate {
   name: boolean
   promo: boolean
+  randomModel: IRandomModel
+}
+
+type IModels = Record<RandomModels, number>
+
+export interface IRandomModel extends IModels {
+  model?: RandomModels
+  value?: number
+  step: number
 }
 
 export interface IContext extends ItemWithUpdate {

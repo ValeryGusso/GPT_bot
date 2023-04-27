@@ -7,6 +7,6 @@ export const tarifRelations = {
 export const userRelations = {
   activity: { include: { tarif: true } },
   settings: true,
-  context: { include: { value: true } },
+  context: { include: { context: true } },
   token: true,
 }

@@ -14,6 +14,6 @@ export interface IMessage {
 export interface IOptions {
   model: 'gpt-3.5-turbo' | 'gpt-4'
   messages: IMessage[]
-  temperature: number | undefined
-  top_p: number | undefined
+  temperature?: number
+  top_p?: number
 }

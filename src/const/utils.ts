@@ -19,7 +19,7 @@ export function getToggleId(str: string) {
 }
 
 export function getToggleValue(str: string) {
-  return str.replace(/^.*_(\w+)$/i, '$1')
+  return str.split('_').pop()!
 }
 
 export function getContextValue(str: string) {
@@ -40,6 +40,12 @@ export function getRandomModelValue(str: string) {
 
 export function isFullUser(user: FullUser | null | undefined): user is FullUser {
   return !!user?.chatId
+}
+
+export function getServiceInfo(user: FullUser) {
+  return `/* IMPORTANT! This is service information, imagine that this message does not exist, do not reply to it, but use this information for self-instruction and proper response composition.\nAlways call me by name\n My name is ${
+    user.name
+  }\n${user.context?.useServiceInfo ? user.context?.serviceInfo : ''}*/`
 }
 
 export function safeMarkdown(str: string) {

@@ -5,7 +5,7 @@ import { IResult, IOptions, IMessage } from '../interfaces/gpt.js'
 import { MessageRole } from '@prisma/client'
 import { FullUser } from '../interfaces/db.js'
 import DBService from './db.js'
-import { isFullUser, safeMarkdown } from '../const/utils.js'
+import { getServiceInfo, safeMarkdown } from '../const/utils.js'
 
 class GPTService {
   private readonly API
@@ -17,8 +17,6 @@ class GPTService {
     const options: IOptions = {
       model: 'gpt-3.5-turbo',
       messages,
-      temperature: undefined,
-      top_p: undefined,
     }
 
     switch (user.settings?.randomModel) {
@@ -41,13 +39,13 @@ class GPTService {
       {
         role: MessageRole.user,
         content: msg,
-        name: user.name,
       },
     ]
 
-    if (user.context?.useServiceInfo) {
-      message.unshift({ role: MessageRole.system, content: user.context.serviceInfo })
-    }
+    message.unshift({
+      role: MessageRole.user,
+      content: getServiceInfo(user),
+    })
 
     const options = this.createOptions(user, message)
 
@@ -68,19 +66,15 @@ class GPTService {
   async sendWithContext(chatId: number) {
     const user = await DBService.getByChatId(chatId)
 
-    if (!isFullUser(user)) {
-      throw new Error('User not found')
-    }
-
     const messages: IMessage[] = []
-
-    user.context?.value.forEach((msg) => {
-      messages.push({ role: msg.role, content: msg.content, name: user.name })
+    user.context?.context.forEach((msg, i) => {
+      messages.push({ role: msg.role, content: msg.content })
     })
 
-    if (user.context?.useServiceInfo) {
-      messages.unshift({ role: MessageRole.system, content: user.context.serviceInfo })
-    }
+    messages.unshift({
+      role: MessageRole.user,
+      content: getServiceInfo(user),
+    })
 
     const options = this.createOptions(user, messages)
 

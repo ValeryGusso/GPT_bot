@@ -1,6 +1,6 @@
 import { Currency, Language, MessageRole, PrismaClient, RandomModels } from '@prisma/client'
 import { CreateTarifArguments, CreatePriceArguments, FullUser, FullTarif, IAccess } from '../interfaces/db.js'
-import { ICode, IReg } from '../interfaces/tg.js'
+import { ICode, IRandomModel, IReg } from '../interfaces/tg.js'
 import { tarifRelations, userRelations } from '../const/relations.js'
 
 class DBService {
@@ -13,6 +13,15 @@ class DBService {
   /* GET */
   async getByChatId(chatId: number) {
     const user = await this.prisma.user.findUniqueOrThrow({
+      where: { chatId },
+      include: userRelations,
+    })
+
+    return user
+  }
+
+  async getByChatIdUnsafe(chatId: number) {
+    const user = await this.prisma.user.findUnique({
       where: { chatId },
       include: userRelations,
     })
@@ -37,17 +46,13 @@ class DBService {
 
   /* CREATE */
   async createUser(chatId: number, userInfo: IReg) {
-    const code = await this.prisma.code.findUnique({ where: { value: userInfo.code } })
+    const code = await this.prisma.code.findUniqueOrThrow({ where: { value: userInfo.code } })
 
     if (!code?.tarifId) {
       throw new Error('Invalide code')
     }
 
-    const tarif = await this.prisma.tarif.findUnique({ where: { id: code.tarifId } })
-
-    if (!tarif) {
-      throw new Error(`Tarif does not exist!`)
-    }
+    const tarif = await this.prisma.tarif.findUniqueOrThrow({ where: { id: code.tarifId } })
 
     const user = await this.prisma.user.create({ data: { chatId, name: userInfo.name } })
     await this.prisma.token.create({ data: { userId: user.id } })
@@ -60,6 +65,11 @@ class DBService {
         tarifId: tarif?.id,
       },
     })
+
+    if (code.value !== 'welcome') {
+      await this.prisma.code.update({ where: { id: code.id }, data: { limit: { decrement: 1 } } })
+    }
+
     return true
   }
 
@@ -111,10 +121,10 @@ class DBService {
 
   async createMessage(role: MessageRole, content: string, user: FullUser) {
     /* REMOVE FIRST MESSAGE WHEN CONTEXT LIMIT IS OVER */
-    if (user.context?.value.length! >= user.activity?.tarif.maxContext!) {
+    if (user.context?.context.length! >= user.activity?.tarif.maxContext!) {
       const idList: number[] = []
 
-      user.context?.value.forEach((el) => {
+      user.context?.context.forEach((el) => {
         idList.push(el.id)
       })
 
@@ -156,13 +166,13 @@ class DBService {
     await this.prisma.context.update({ where: { userId }, data: { length: value } })
   }
 
-  async changeRandomModel(model: RandomModels, value: number, userId: number) {
+  async changeRandomModel(models: IRandomModel, userId: number) {
     await this.prisma.settings.update({
       where: { userId },
       data: {
-        randomModel: model,
-        temperature: value,
-        topP: value,
+        randomModel: models.model || 'temperature',
+        temperature: models.model === 'temperature' ? models.value : models.model === 'both' ? models.temperature : 0.7,
+        topP: models.model === 'topP' ? models.value : models.model === 'both' ? models.topP : 0.7,
       },
     })
   }
@@ -212,6 +222,13 @@ class DBService {
     })
   }
 
+  async serviceInfoToggle(userId: number, action: string) {
+    await this.prisma.context.update({
+      where: { userId },
+      data: { useServiceInfo: action === 'on' },
+    })
+  }
+
   /* UTILS */
   async validateAccess(user: FullUser) {
     const access: IAccess = {
@@ -243,6 +260,11 @@ class DBService {
     }
 
     return access
+  }
+
+  async validateCode(code: string) {
+    const candidat = await this.prisma.code.findUnique({ where: { value: code } })
+    return !!candidat
   }
 }
 
