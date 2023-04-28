@@ -31,7 +31,6 @@ class TgService {
       callback_data: 'back_to_chat',
     },
   ]
-
   private contextButton(userId: number): InlineKeyboardButton[] {
     return [
       { text: 'Сбросить контекст 🔄', callback_data: 'context_reset' },
@@ -61,6 +60,29 @@ class TgService {
 
     return buttons
   }
+  private async getPriceButtons(prefix: string, tarifId: number) {
+    const pricess = await DBService.getAllPrices(tarifId)
+
+    const buttons: InlineKeyboardButton[][] = []
+    let row = 0
+
+    pricess.forEach((price) => {
+      const index = Math.floor(row / 5)
+
+      if (!Array.isArray(buttons[index])) {
+        buttons[index] = []
+      }
+
+      buttons[index].push({
+        text: `${price.value} ${price.currency}`,
+        callback_data: prefix + '_' + price.id,
+      })
+
+      row++
+    })
+
+    return buttons
+  }
 
   /* UTILS */
   private async getLang(chatId: number) {
@@ -71,9 +93,21 @@ class TgService {
     return this.bot
   }
 
-  async sendMessage(chatId: number, message: string) {
+  async sendMessage(chatId: number, message: string, isStartChat?: boolean) {
+    const user = await DBService.getByChatId(chatId)
+
+    const inline_keyboard = [this.menuAndsettingSButtons]
+
+    const contextButtons: InlineKeyboardButton[] = user.context?.useContext
+      ? this.contextButton(user.id)
+      : [{ text: 'Включить контекст', callback_data: `toggle_context_${user.id}_on` }]
+
+    if (isStartChat) {
+      inline_keyboard.unshift(contextButtons)
+    }
+
     this.bot.sendMessage(chatId, message, {
-      reply_markup: { inline_keyboard: [this.menuAndsettingSButtons] },
+      reply_markup: { inline_keyboard },
     })
   }
 
@@ -158,6 +192,7 @@ class TgService {
     await this.bot.sendMessage(chatId, 'Меню', {
       reply_markup: {
         inline_keyboard,
+        remove_keyboard: true,
       },
     })
   }
@@ -372,7 +407,10 @@ class TgService {
         await DBService.createMessage(MessageRole.assistant, res.message, user)
       }
 
-      const activity = user.isAdmin ? null : await DBService.updateActivity(user.id, res.tokens)
+      const activity =
+        user.isAdmin || user.activity?.tarif.name === 'unlim'
+          ? null
+          : await DBService.updateActivity(user.id, res.tokens)
 
       const usage = `\n\n--- --- --- --- --- --- --- --- ---
       \nИспользовано ${res.tokens} токенов. 
@@ -540,7 +578,9 @@ class TgService {
     \n${tarif.description}
     \n --- --- --- --- --- --- ---
     \nТип: ${tarif.type === 'limit' ? 'лимит запросов' : 'подписка'}, ${timestampToDate(tarif.duration)}
-    \nЛимиты: дневной ${tarif.dailyLimit} / общий ${tarif.totalLimit}
+    \nЛимиты: дневной ${tarif.dailyLimit === 0 ? '∞' : tarif.dailyLimit} / общий ${
+      tarif.totalLimit === 0 ? '∞' : tarif.totalLimit
+    }
     \nМаксимальная доступная длина контекста: ${tarif.maxContext}`
 
     this.bot.sendMessage(chatId, description, {
@@ -556,6 +596,27 @@ class TgService {
         ],
       },
     })
+  }
+
+  async sendTarifPrices(chatId: number, tarifId: number) {
+    const buttons = await this.getPriceButtons('tarif_buy_', tarifId)
+    buttons.push(this.menuAndsettingSButtons)
+
+    this.bot.sendMessage(chatId, 'Выбери удобный для тебя способ оплаты', {
+      reply_markup: {
+        inline_keyboard: buttons,
+      },
+    })
+  }
+
+  async sendTarifBuy(chatId: number, priceId: number) {
+    this.bot.sendMessage(
+      chatId,
+      'К сожалению на текущий момент нет технической возможности автоматического преобретения тарифов, но над этим ведутся активные работы :( Отратитесь ко мне напрямую для получения промо-кода для этого тарифа',
+      {
+        reply_markup: { inline_keyboard: [this.contactMeButton, this.menuAndsettingSButtons] },
+      },
+    )
   }
 
   async sendMyTarif(chatId: number) {

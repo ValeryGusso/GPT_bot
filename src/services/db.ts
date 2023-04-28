@@ -14,7 +14,12 @@ class DBService {
   async getByChatId(chatId: number) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { chatId },
-      include: userRelations,
+      include: {
+        activity: { include: { tarif: true } },
+        settings: true,
+        context: { include: { context: true } },
+        token: true,
+      },
     })
 
     return user
@@ -42,6 +47,10 @@ class DBService {
       include: tarifRelations,
     })
     return tarif as FullTarif
+  }
+
+  async getAllPrices(tarifId: number) {
+    return await this.prisma.price.findMany({ where: { tarifId } })
   }
 
   /* CREATE */
@@ -235,6 +244,10 @@ class DBService {
       daily: true,
       total: true,
       validTarif: true,
+    }
+
+    if (user.activity?.tarif.name === 'unlim') {
+      return access
     }
 
     const day = user.activity?.updatedAt.getDay()

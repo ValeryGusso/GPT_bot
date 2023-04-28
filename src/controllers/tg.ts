@@ -2,6 +2,7 @@ import { CallbackQuery, Message } from 'node-telegram-bot-api'
 import dotenv from 'dotenv'
 import TgService from '../services/tg.js'
 import DBService from '../services/db.js'
+import CacheService from '../services/cache.js'
 import { ICache, IRandomModel } from '../interfaces/tg.js'
 import { CreatePriceArguments, FullUser } from '../interfaces/db.js'
 import { Currency, Language, RandomModels, TarifType } from '@prisma/client'
@@ -29,6 +30,7 @@ class TgController {
     settings: {},
     context: {},
     language: {},
+    user: {},
   }
 
   private readonly cacheExpires
@@ -260,7 +262,7 @@ class TgController {
   private async startShat(chatId: number) {
     this.clearAllCacheById(chatId)
     await DBService.clearContext(chatId)
-    TgService.sendMessage(chatId, 'Задай мне любой интересующий тебя вопрос!')
+    TgService.sendMessage(chatId, 'Задай мне любой интересующий тебя вопрос!', true)
   }
 
   private async tarif(chatId: number, text: string) {
@@ -493,9 +495,9 @@ class TgController {
 
         /* CREATE TARIF */
         if (text === '/tarif' && user.isAdmin) {
-          if (this.cache.tarif[chatId]) {
-            await this.tarif(chatId, text)
-          }
+          this.createCacheTarif(chatId)
+          await this.tarif(chatId, text)
+
           return
         }
 
@@ -768,6 +770,14 @@ class TgController {
           if (cb.data?.startsWith('settings_tarifs_')) {
             TgService.sendTarifById(chatId, getQueryId(cb.data))
             return
+          }
+
+          if (cb.data.startsWith('tarif_select_')) {
+            TgService.sendTarifPrices(chatId, getQueryId(cb.data))
+          }
+
+          if (cb.data.startsWith('tarif_buy_')) {
+            TgService.sendTarifBuy(chatId, getQueryId(cb.data))
           }
 
           /* RANDOM MODEL AND VALUES */
