@@ -5,17 +5,6 @@ type ItemWithUpdate = {
   updatedAt: number
 }
 
-// type ICacheItem =
-//   | RegistrationCache
-//   | TarifCache
-//   | PriceCache
-//   | CodeCache
-//   | SettingsCache
-//   | ContextCache
-//   | ContextUser
-//   | ModeCache
-// [key: string]: ICacheItem
-
 export type ICache = {
   reg: RegistrationCache
   tarif: TarifCache
@@ -100,21 +89,8 @@ export interface IContext extends ItemWithUpdate {
   useServiceInfo: boolean
 }
 
-// interface IUserBase {
-//   isExist: boolean
-// }
-
-// interface IUserWithUser extends IUserBase {
-//   user: FullUser
-// }
-
-// export type IUser = ItemWithUpdate &
-//   IUserBase &
-//   (IUserWithUser & ({ isExist: true } | (IUserBase & { isExist: false })))
-
 export interface IUser extends ItemWithUpdate {
   user: FullUser
-  isExist: boolean
 }
 
 export interface IMode extends ItemWithUpdate {

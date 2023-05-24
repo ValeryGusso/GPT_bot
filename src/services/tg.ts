@@ -1,12 +1,11 @@
 import TelegramBot, { InlineKeyboardButton, InlineKeyboardMarkup } from 'node-telegram-bot-api'
 import GPTService from '../services/gpt.js'
 import DBService from './db.js'
+import CacheService from './cache.js'
 import TextService from './text.js'
-import TgController from '../controllers/tg.js'
-import { ICode, IPriceItem, IRandomModel, IReg, ITarif } from '../interfaces/tg.js'
-import { FullUser } from '../interfaces/db.js'
+import { IRandomModel } from '../interfaces/tg.js'
 import { Currency, Language, MessageRole, RandomModels, TarifType } from '@prisma/client'
-import { isFullUser, timestampToDate, validateMarkdown } from '../const/utils.js'
+import { timestampToDate, validateMarkdown } from '../const/utils.js'
 import { commandsList, FAQ } from '../const/text.js'
 import { day, month, year } from '../const/const.js'
 
@@ -85,10 +84,6 @@ class TgService {
   }
 
   /* UTILS */
-  private async getLang(chatId: number) {
-    return await TgController.getUserLanguage(chatId)
-  }
-
   getBot() {
     return this.bot
   }
@@ -215,7 +210,8 @@ class TgService {
   }
 
   /* START AND REGISTRATION */
-  async start(chatId: number, info: IReg, error?: string) {
+  async start(chatId: number, error?: string) {
+    const info = CacheService.getReg(chatId)
     switch (info.step) {
       case 1:
         this.bot.sendMessage(
@@ -297,9 +293,10 @@ class TgService {
   }
 
   /* CODE */
-  async createCode(chatId: number, info: ICode) {
-    console.log(info.step)
-    switch (info.step) {
+  async createCode(chatId: number) {
+    const code = CacheService.getCode(chatId)
+
+    switch (code.step) {
       case 1:
         await this.bot.sendMessage(chatId, 'Введи код:')
         break
@@ -320,7 +317,7 @@ class TgService {
       case 4:
         await this.bot.sendMessage(
           chatId,
-          `Всё правильно?\nТариф: ${info.tarifName} с айди ${info.tarifId}\nКод: ${info.value}\nЛимит :${info.limit}`,
+          `Всё правильно?\nТариф: ${code.tarifName} с айди ${code.tarifId}\nКод: ${code.value}\nЛимит :${code.limit}`,
           {
             reply_markup: {
               inline_keyboard: [
@@ -332,10 +329,10 @@ class TgService {
         )
         break
       case 5:
-        await DBService.createCode(info)
+        await DBService.createCode(code)
         await this.bot.sendMessage(
           chatId,
-          `Код ${info.value} для тарифа ${info.tarifName} с лимитом использования ${info.limit} успешно создан!`,
+          `Код ${code.value} для тарифа ${code.tarifName} с лимитом использования ${code.limit} успешно создан!`,
           {
             reply_markup: {
               inline_keyboard: [
@@ -354,7 +351,8 @@ class TgService {
     }
   }
 
-  async activateCode(chatId: number, code: string, user: FullUser) {
+  async activateCode(chatId: number, code: string) {
+    const { user } = await CacheService.getUser(chatId)
     await DBService.activateCode(user.id, code)
 
     this.bot.sendMessage(chatId, `Код успешно был активирован!`, {
@@ -365,7 +363,9 @@ class TgService {
   }
 
   /* GPT */
-  async sendQuestion(chatId: number, text: string, user: FullUser) {
+  async sendQuestion(chatId: number, text: string) {
+    const { user } = await CacheService.getUser(chatId)
+
     if (!user.isAdmin) {
       /* VALIDATE ACCESS */
       const access = await DBService.validateAccess(user)
@@ -449,8 +449,10 @@ class TgService {
   }
 
   /* TARIFS */
-  async createTarif(chatId: number, info: ITarif, price: IPriceItem[]) {
-    switch (info.step) {
+  async createTarif(chatId: number) {
+    const tarif = CacheService.getTarif(chatId)
+    const { prices } = CacheService.getPrice(chatId)
+    switch (tarif.step) {
       case 1:
         await this.bot.sendMessage(chatId, 'Кодовое название тарифа:')
         break
@@ -528,9 +530,9 @@ class TgService {
         break
 
       case 12:
-        const message = price.reduce(
+        const message = prices.reduce(
           (acc, el) => acc + el.value + ' ' + el.currency + '\n',
-          `Текущие ценники для тарифа ${info.name}\n`,
+          `Текущие ценники для тарифа ${tarif.name}\n`,
         )
 
         await this.bot.sendMessage(chatId, message, {
@@ -546,12 +548,12 @@ class TgService {
       case 13:
         await this.bot.sendMessage(
           chatId,
-          `Тариф ${info.name} / ${info.title} успешно создан!
-          \nОписание: ${info.description} 
-          \nЛимиты: ${info.limit} / ${info.dailyLimit} 
-          \nМаксимальный контекст: ${info.maxContext} 
-          \nТип: ${info.type}  
-          \nДлительность: ${Math.floor(info.duration / day)}дней
+          `Тариф ${tarif.name} / ${tarif.title} успешно создан!
+          \nОписание: ${tarif.description} 
+          \nЛимиты: ${tarif.limit} / ${tarif.dailyLimit} 
+          \nМаксимальный контекст: ${tarif.maxContext} 
+          \nТип: ${tarif.type}  
+          \nДлительность: ${Math.floor(tarif.duration / day)}дней
           \nЧто делаем дальше?`,
           {
             reply_markup: {
@@ -620,7 +622,8 @@ class TgService {
   }
 
   async sendMyTarif(chatId: number) {
-    const user = await DBService.getByChatId(chatId)
+    const { user } = await CacheService.getUser(chatId)
+    // const user = await DBService.getByChatId(chatId)
 
     const description = `Мой тариф ${user?.activity?.tarif.title}
     \nОбщий лимит ${user?.activity?.tarif.totalLimit} / ежедневный ${user?.activity?.tarif.dailyLimit}
@@ -637,39 +640,31 @@ class TgService {
   }
 
   /* SETTINGS */
-  async settings(chatId: number, user?: FullUser) {
-    let safeUser: FullUser | null | undefined = user
-
-    if (!user) {
-      safeUser = await DBService.getByChatId(chatId)
-    }
-
-    if (!isFullUser(safeUser)) {
-      throw new Error('User not found')
-    }
+  async settings(chatId: number) {
+    const { user } = await CacheService.getUser(chatId)
 
     const buttons = [
-      [{ text: 'Рандомайзер', callback_data: 'settings_random_' + safeUser.id }],
+      [{ text: 'Рандомайзер', callback_data: 'settings_random_' + user.id }],
       [
         { text: 'Параметры запросов', callback_data: 'settings_service_info' },
         {
-          text: safeUser.context?.useServiceInfo ? 'Отключить' : 'Включить',
-          callback_data: `toggle_service_info_${safeUser.id}_${safeUser.context?.useServiceInfo ? 'off' : 'on'}`,
+          text: user.context?.useServiceInfo ? 'Отключить' : 'Включить',
+          callback_data: `toggle_service_info_${user.id}_${user.context?.useServiceInfo ? 'off' : 'on'}`,
         },
       ],
       [
         {
           text: 'Контекст',
-          callback_data: 'context_change_length_' + safeUser.id + '_' + safeUser.activity?.tarif.maxContext,
+          callback_data: 'context_change_length_' + user.id + '_' + user.activity?.tarif.maxContext,
         },
         {
-          text: safeUser.context?.useContext ? 'Отключить' : 'Включить',
-          callback_data: `toggle_context_${safeUser.id}_${safeUser.context?.useContext ? 'off' : 'on'}`,
+          text: user.context?.useContext ? 'Отключить' : 'Включить',
+          callback_data: `toggle_context_${user.id}_${user.context?.useContext ? 'off' : 'on'}`,
         },
       ],
       [
-        { text: 'Изменить имя', callback_data: 'settings_name_' + safeUser.name },
-        { text: 'Язык', callback_data: 'settings_lang_' + safeUser.id },
+        { text: 'Изменить имя', callback_data: 'settings_name_' + user.name },
+        { text: 'Язык', callback_data: 'settings_lang_' + user.id },
       ],
       [this.tarifsButton, { text: 'Ввести промокод', callback_data: 'tarifs_send_code' }],
       [
@@ -724,7 +719,9 @@ class TgService {
     })
   }
 
-  async changeName(chatId: number, name: string, user: FullUser) {
+  async changeName(chatId: number, name: string) {
+    const { user } = await CacheService.getUser(chatId)
+
     await DBService.changeName(name, user)
     this.bot.sendMessage(chatId, 'Имя успешно изменено на ' + name, {
       reply_markup: {
@@ -862,7 +859,9 @@ class TgService {
     })
   }
 
-  async changeQuery(chatId: number, query: string, user: FullUser) {
+  async changeQuery(chatId: number, query: string) {
+    const { user } = await CacheService.getUser(chatId)
+
     await DBService.changeQuery(query, user)
     this.bot.sendMessage(chatId, 'Дополнительные параметры запроса были успешно изменены', {
       reply_markup: { inline_keyboard: [[this.settingsButton], this.chatButton] },

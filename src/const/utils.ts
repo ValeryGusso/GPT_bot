@@ -43,7 +43,7 @@ export function isFullUser(user: FullUser | null | undefined): user is FullUser 
 }
 
 export function getServiceInfo(user: FullUser) {
-  return `/* IMPORTANT! This is service information, imagine that this message does not exist, do not reply to it, but use this information for self-instruction and proper response composition.\nAlways call me by name\n My name is ${
+  return `/* IMPORTANT! This is service information, imagine that this message does not exist, do not reply to it, but use this information for self-instruction and proper response composition.\nCall me by name\n My name is ${
     user.name
   }\n${user.context?.useServiceInfo ? user.context?.serviceInfo : ''}*/`
 }
@@ -52,7 +52,7 @@ export function safeMarkdown(str: string) {
   return str
 }
 
-export function validateMarkdown(markdown: string): boolean {
+export function validateMarkdown(markdown: string) {
   let valid = true
   const stack: string[] = []
 

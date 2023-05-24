@@ -14,12 +14,7 @@ class DBService {
   async getByChatId(chatId: number) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { chatId },
-      include: {
-        activity: { include: { tarif: true } },
-        settings: true,
-        context: { include: { context: true } },
-        token: true,
-      },
+      include: userRelations,
     })
 
     return user

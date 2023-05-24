@@ -3,10 +3,8 @@ import dotenv from 'dotenv'
 import TgService from '../services/tg.js'
 import DBService from '../services/db.js'
 import CacheService from '../services/cache.js'
-import { ICache, IRandomModel } from '../interfaces/tg.js'
 import { CreatePriceArguments, FullUser } from '../interfaces/db.js'
 import { Currency, Language, RandomModels, TarifType } from '@prisma/client'
-import { hour } from '../const/const.js'
 import {
   getContextId,
   getContextValue,
@@ -22,132 +20,25 @@ import {
 dotenv.config()
 
 class TgController {
-  private cache: ICache = {
-    reg: {},
-    tarif: {},
-    price: {},
-    code: {},
-    settings: {},
-    context: {},
-    language: {},
-    user: {},
-  }
-
-  private readonly cacheExpires
-
-  private clearAllCacheById(chatId: number) {
-    for (const primaryKey in this.cache) {
-      delete this.cache[primaryKey][chatId]
-    }
-  }
-
-  private clearCache() {
-    for (const primaryKey in this.cache) {
-      const field = this.cache[primaryKey]
-
-      for (const chatId in field) {
-        if (this.cache[primaryKey][chatId].updatedAt + this.cacheExpires < Date.now()) {
-          delete this.cache[primaryKey][chatId]
-        }
-      }
-    }
-  }
-
-  constructor(cacheExpires: number) {
-    this.cacheExpires = cacheExpires
-    setInterval(() => {
-      this.clearCache()
-    }, this.cacheExpires)
-  }
-
   /* UTILS */
-  private createCacheReg(chatId: number, name: string) {
-    this.cache.reg[chatId] = {
-      name: name || 'Незнакомец',
-      code: '',
-      language: Language.ru,
-      step: 1,
-      updatedAt: Date.now(),
-    }
-  }
+  private async checkAuthAndRegistration(chatId: number, text: string) {
+    const registration = CacheService.getReg(chatId)
+    const unsafeUser = CacheService.getUnsafeUser(chatId)
 
-  private createCacheTarif(chatId: number) {
-    this.createCachePrice(chatId)
+    let user: FullUser | null = null
 
-    this.cache.tarif[chatId] = {
-      name: '',
-      title: '',
-      description: '',
-      image: '',
-      limit: 0,
-      dailyLimit: 0,
-      maxContext: 10,
-      type: 'limit',
-      duration: 0,
-      step: 1,
-      updatedAt: Date.now(),
-    }
-  }
-
-  private createCachePrice(chatId: number) {
-    this.cache.price[chatId] = { prices: [], updatedAt: Date.now() }
-  }
-
-  private createCacheCode(chatId: number) {
-    this.cache.code[chatId] = {
-      value: '',
-      limit: 1,
-      tarifName: '',
-      tarifId: 0,
-      step: 1,
-      updatedAt: Date.now(),
-    }
-  }
-
-  private createCacheSettings(chatId: number) {
-    this.cache.settings[chatId] = {
-      name: false,
-      promo: false,
-      randomModel: { step: 1 } as IRandomModel,
-      updatedAt: Date.now(),
-    }
-  }
-
-  private createCacheContext(chatId: number) {
-    this.cache.context[chatId] = {
-      length: false,
-      service: false,
-      random: false,
-      useServiceInfo: false,
-      updatedAt: Date.now(),
-    }
-  }
-
-  private async createCacheLanguage(chatId: number, user?: FullUser) {
-    let safeUser: FullUser | undefined = user
-
-    if (!isFullUser(safeUser)) {
-      safeUser = await DBService.getByChatId(chatId)
+    if (unsafeUser) {
+      user = unsafeUser.user
+      return true
     }
 
-    this.cache.language[chatId] = {
-      lang: safeUser.settings?.language!,
-      updatedAt: Date.now(),
-    }
-
-    return safeUser.settings?.language!
-  }
-
-  private async checkAuthAndRegistration(chatId: number, text: string, user: FullUser | null, name: string) {
-    if (text !== '/start' && !user && !this.cache.reg[chatId]) {
+    if (text !== '/start' && !user) {
       await TgService.welcome(chatId)
       return false
     }
 
     if (text === '/start' && !user) {
-      this.createCacheReg(chatId, name)
-
-      await TgService.start(chatId, this.cache.reg[chatId])
+      await TgService.start(chatId)
       return false
     }
 
@@ -156,26 +47,25 @@ class TgController {
       return true
     }
 
-    if (this.cache.reg[chatId]) {
-      switch (this.cache.reg[chatId].step) {
+    if (registration) {
+      switch (registration.step) {
         case 1:
           await TgService.start(
             chatId,
-            this.cache.reg[chatId],
             'Это немного не то, что я хотел бы получить от тебя в ответ. Давай всё таки определимся с языком',
           )
           return false
         case 2:
-          this.cache.reg[chatId].name = text
-          this.cache.reg[chatId].step++
-          await TgService.start(chatId, this.cache.reg[chatId])
+          registration.name = text
+          registration.step++
+          await TgService.start(chatId)
           return false
         case 3:
           const isValid = await DBService.validateCode(text)
           if (isValid) {
-            this.cache.reg[chatId].code = text
-            this.cache.reg[chatId].step++
-            await TgService.start(chatId, this.cache.reg[chatId])
+            registration.code = text
+            registration.step++
+            await TgService.start(chatId)
             return false
           }
 
@@ -183,13 +73,12 @@ class TgController {
             chatId,
             'Код невалиден, пожалуйста, укажи валидный код или воспользуйся стартовым тарифом',
           )
-          await TgService.start(chatId, this.cache.reg[chatId])
+          await TgService.start(chatId)
           return false
 
         case 4:
           await TgService.start(
             chatId,
-            this.cache.reg[chatId],
             'Это немного не то, что я хотел бы получить от тебя в ответ. Давай всё таки сверим данные и завершим регистрацию',
           )
           return false
@@ -200,39 +89,40 @@ class TgController {
     return true
   }
 
-  private async settings(chatId: number, text: string, user: FullUser) {
-    if (!this.cache.settings[chatId]) {
-      this.createCacheSettings(chatId)
-    }
-    this.createCacheContext(chatId)
+  private async settings(chatId: number, text: string) {
+    const settings = CacheService.getSettings(chatId)
+    const context = CacheService.getContext(chatId)
+    const { user } = await CacheService.getUser(chatId)
 
     if (text === '/settings') {
-      await TgService.settings(chatId, user)
+      await TgService.settings(chatId)
       return
     }
 
-    if (this.cache.settings[chatId]) {
-      if (this.cache.settings[chatId].name) {
-        await TgService.changeName(chatId, text, user)
-        this.cache.settings[chatId].updatedAt = Date.now()
-        this.cache.settings[chatId].name = false
+    if (settings) {
+      if (settings.name) {
+        await TgService.changeName(chatId, text)
+        settings.updatedAt = Date.now()
+        settings.name = false
+        await CacheService.updateUser(chatId)
         return
       }
 
-      if (this.cache.settings[chatId].promo) {
+      if (settings.promo) {
         const isValid = await DBService.validateCode(text)
         if (isValid) {
-          await TgService.activateCode(chatId, text, user)
-          this.cache.settings[chatId].updatedAt = Date.now()
-          this.cache.settings[chatId].promo = false
+          await TgService.activateCode(chatId, text)
+          settings.updatedAt = Date.now()
+          settings.promo = false
+          await CacheService.updateUser(chatId)
           return
         }
         await this.sendError(chatId, 'Код невалиден')
       }
     }
 
-    if (this.cache.context[chatId]) {
-      if (this.cache.context[chatId].length) {
+    if (context) {
+      if (context.length) {
         const length = parseInt(text)
 
         if (!length || length < 1 || length > user.activity?.tarif?.maxContext!) {
@@ -240,50 +130,51 @@ class TgController {
           return
         }
         await TgService.changeContextLength(chatId, length, user.id)
-        this.cache.context[chatId].updatedAt = Date.now()
-        this.cache.context[chatId].length = false
+        context.updatedAt = Date.now()
+        context.length = false
+        await CacheService.updateUser(chatId)
         return
       }
 
-      if (this.cache.context[chatId].service) {
+      if (context.service) {
         if (!text) {
           await this.sendError(chatId, 'Необходимо указать корректные параметры!')
           await TgService.sendQueryInput(chatId)
           return
         }
-        await TgService.changeQuery(chatId, text, user)
-        this.cache.context[chatId].updatedAt = Date.now()
-        this.cache.context[chatId].service = false
+        await TgService.changeQuery(chatId, text)
+        context.updatedAt = Date.now()
+        context.service = false
+        await CacheService.updateUser(chatId)
         return
       }
     }
   }
 
   private async startShat(chatId: number) {
-    this.clearAllCacheById(chatId)
+    CacheService.clearAll(chatId)
     await DBService.clearContext(chatId)
     TgService.sendMessage(chatId, 'Задай мне любой интересующий тебя вопрос!', true)
   }
 
   private async tarif(chatId: number, text: string) {
-    if (!this.cache.tarif[chatId]) {
-      this.createCacheTarif(chatId)
-    }
+    const tarif = CacheService.getTarif(chatId)
+    const { prices } = CacheService.getPrice(chatId)
 
     /* UTILS */
     const incrementRegistrationStep = async (isRetry?: boolean) => {
-      this.cache.tarif[chatId].updatedAt = Date.now()
+      tarif.updatedAt = Date.now()
       if (!isRetry) {
-        this.cache.tarif[chatId].step++
+        tarif.step++
       }
-      await TgService.createTarif(chatId, this.cache.tarif[chatId], this.cache.price[chatId].prices)
+      await TgService.createTarif(chatId)
     }
 
     /* PREVALIDATION */
 
     /* INITIAL CASE */
     if (text === '/tarif') {
-      await TgService.createTarif(chatId, this.cache.tarif[chatId], this.cache.price[chatId].prices)
+      await TgService.createTarif(chatId)
       return
     }
 
@@ -295,61 +186,53 @@ class TgController {
 
     /* NUMBERS CASES */
 
-    if (
-      ((this.cache.tarif[chatId].step >= 5 && this.cache.tarif[chatId].step <= 9) ||
-        this.cache.tarif[chatId].step === 11) &&
-      Number.isNaN(parseInt(text))
-    ) {
+    if (((tarif.step >= 5 && tarif.step <= 9) || tarif.step === 11) && Number.isNaN(parseInt(text))) {
       this.tarif(chatId, '*wrong_case*')
       return
     }
 
     /* BUTTON CASES */
-    if (
-      this.cache.tarif[chatId].step === 9 ||
-      this.cache.tarif[chatId].step === 10 ||
-      this.cache.tarif[chatId].step === 13
-    ) {
+    if (tarif.step === 9 || tarif.step === 10 || tarif.step === 13) {
       this.tarif(chatId, '*wrong_case*')
       return
     }
 
     /* HANDLERS */
-    switch (this.cache.tarif[chatId].step) {
+    switch (tarif.step) {
       case 1:
-        this.cache.tarif[chatId].name = text
+        tarif.name = text
         return incrementRegistrationStep()
 
       case 2:
-        this.cache.tarif[chatId].title = text
+        tarif.title = text
         return incrementRegistrationStep()
 
       case 3:
-        this.cache.tarif[chatId].description = text
+        tarif.description = text
         return incrementRegistrationStep()
 
       case 4:
-        this.cache.tarif[chatId].image = text
+        tarif.image = text
         return incrementRegistrationStep()
 
       case 5:
-        this.cache.tarif[chatId].limit = parseInt(text)
+        tarif.limit = parseInt(text)
         return incrementRegistrationStep()
 
       case 6:
-        this.cache.tarif[chatId].dailyLimit = parseInt(text)
+        tarif.dailyLimit = parseInt(text)
         return incrementRegistrationStep()
 
       case 7:
-        this.cache.tarif[chatId].maxContext = parseInt(text)
+        tarif.maxContext = parseInt(text)
         return incrementRegistrationStep()
 
       case 8:
-        this.cache.tarif[chatId].duration = parseInt(text)
+        tarif.duration = parseInt(text)
         return incrementRegistrationStep()
 
       case 11:
-        const curPrice = this.cache.price[chatId].prices[this.cache.price[chatId].prices.length - 1]
+        const curPrice = prices[prices.length - 1]
 
         curPrice.value = parseInt(text)
         curPrice.updatedAt = Date.now()
@@ -358,15 +241,12 @@ class TgController {
   }
 
   private async code(chatId: number, text: string) {
+    const code = CacheService.getCode(chatId)
     const incementStep = async (isRetry?: boolean) => {
       if (!isRetry) {
-        this.cache.code[chatId].step++
+        code.step++
       }
-      await TgService.createCode(chatId, this.cache.code[chatId])
-    }
-
-    if (!this.cache.code[chatId]) {
-      this.createCacheCode(chatId)
+      await TgService.createCode(chatId)
     }
 
     if (text === '/code') {
@@ -374,18 +254,18 @@ class TgController {
       return
     }
 
-    if (this.cache.code[chatId].step === 2 && Number.isNaN(parseInt(text))) {
+    if (code.step === 2 && Number.isNaN(parseInt(text))) {
       return await incementStep(true)
     }
 
-    switch (this.cache.code[chatId].step) {
+    switch (code.step) {
       case 1:
-        this.cache.code[chatId].value = text
+        code.value = text
         await incementStep()
         break
 
       case 2:
-        this.cache.code[chatId].limit = parseInt(text)
+        code.limit = parseInt(text)
         await incementStep()
         break
 
@@ -396,14 +276,6 @@ class TgController {
 
   private async sendError(chatId: number, message: string) {
     await TgService.sendMessage(chatId, 'Упс... что-то пошло не так, попробуй ещё раз.' + '\n' + message)
-  }
-
-  async getUserLanguage(chatId: number) {
-    if (this.cache.language[chatId]) {
-      return this.cache.language[chatId].lang
-    } else {
-      return await this.createCacheLanguage(chatId)
-    }
   }
 
   /* LISTENERS */
@@ -425,7 +297,8 @@ class TgController {
         return
       }
 
-      // /*  UNAUTH COMMAND HANDLER */
+      const { user } = await CacheService.getUser(chatId)
+      /** UNAUTH COMMAND HANDLER */
       if (text.startsWith('/')) {
         /* SHOW MENU */
         if (text === '/menu') {
@@ -453,21 +326,22 @@ class TgController {
       }
 
       /* CHECK AUTH AND REGISTRATION */
-      const user = await DBService.getByChatIdUnsafe(chatId)
 
-      const checkAuth = this.checkAuthAndRegistration(chatId, text, user, msg.from?.first_name || 'Незнакомец')
+      const checkAuth = this.checkAuthAndRegistration(chatId, text)
 
       if (!checkAuth) {
         await this.sendError(chatId, 'Произошла ошибка авторизации.')
         return
+      } else {
+        CacheService.clearReg(chatId)
       }
 
-      if (!isFullUser(user)) {
-        await this.sendError(chatId, 'Произошла ошибка валидации пользователя')
-        return
-      }
+      const code = CacheService.getUnsafeCode(chatId)
+      const settings = CacheService.getUnsafeSettings(chatId)
+      const context = CacheService.getUnsafeContext(chatId)
+      const tarif = CacheService.getUnsafeTaruf(chatId)
 
-      /*  AUTH COMMAND HANDLER */
+      /** AUTH COMMAND HANDLER */
       if (text.startsWith('/')) {
         /* RESET CONTEXT */
         if (text === '/reset') {
@@ -476,8 +350,8 @@ class TgController {
         }
 
         /* SETTINGS */
-        if (text === '/settings' || this.cache.settings[chatId] || this.cache.context[chatId]) {
-          await this.settings(chatId, text, user)
+        if (text === '/settings' || settings || context) {
+          await this.settings(chatId, text)
           return
         }
 
@@ -495,7 +369,6 @@ class TgController {
 
         /* CREATE TARIF */
         if (text === '/tarif' && user.isAdmin) {
-          this.createCacheTarif(chatId)
           await this.tarif(chatId, text)
 
           return
@@ -510,29 +383,29 @@ class TgController {
         return
       }
 
-      /* INPUTS */
+      /** INPUTS */
 
       /* SETTINGS */
-      if (this.cache.settings[chatId] || this.cache.context[chatId]) {
-        await this.settings(chatId, text, user)
+      if (settings || context) {
+        await this.settings(chatId, text)
         return
       }
 
       /* CODE */
-      if (this.cache.code[chatId]) {
+      if (code) {
         await this.code(chatId, text)
         return
       }
 
       /* TARIF */
-      if (this.cache.tarif[chatId]) {
+      if (tarif) {
         await this.tarif(chatId, text)
         return
       }
 
       /* SKIPP ALL ACTIONS, SEND QUESTION TO GPT */
-      // this.sendError(chatId, 'С какого-то хуя дошло досюда')
-      TgService.sendQuestion(chatId, text, user)
+      this.sendError(chatId, 'Всё впорядке')
+      // TgService.sendQuestion(chatId, text)
     } catch (err: any) {
       console.log(err)
       this.sendError(chatId, err.message)
@@ -541,6 +414,9 @@ class TgController {
 
   async callback(cb: CallbackQuery) {
     const chatId = cb.from.id
+
+    const settings = CacheService.getSettings(chatId)
+    const context = CacheService.getContext(chatId)
 
     /* PREVALIDATION BUTTON */
     if (!cb.data || cb.data === 'edit') {
@@ -556,21 +432,23 @@ class TgController {
     try {
       /* UTILS */
       const incrementRegistrationStep = () => {
-        this.cache.reg[chatId].updatedAt = Date.now()
-        this.cache.reg[chatId].step++
-        TgService.start(chatId, this.cache.reg[chatId])
+        const registration = CacheService.getReg(chatId)
+        registration.updatedAt = Date.now()
+        registration.step++
+        TgService.start(chatId)
       }
 
       const incrementTarifStep = () => {
-        this.cache.tarif[chatId].updatedAt = Date.now()
-        this.cache.tarif[chatId].step++
-        TgService.createTarif(chatId, this.cache.tarif[chatId], this.cache.price[chatId].prices)
+        CacheService.getTarif(chatId).updatedAt = Date.now()
+        CacheService.getTarif(chatId).step++
+        TgService.createTarif(chatId)
       }
 
       const createTarif = async () => {
+        const { prices } = CacheService.getPrice(chatId)
         /* CREATING TARIF */
         const { name, title, description, image, limit, dailyLimit, type, maxContext, duration } =
-          this.cache.tarif[chatId]
+          CacheService.getTarif(chatId)
 
         const tarif = await DBService.createTarif({
           name,
@@ -585,10 +463,10 @@ class TgController {
         })
 
         /* CREATING PRICES */
-        const prices: CreatePriceArguments[] = []
+        const pricesList: CreatePriceArguments[] = []
 
-        this.cache.price[chatId].prices.forEach((price) => {
-          prices.push({
+        prices.forEach((price) => {
+          pricesList.push({
             value: price.value,
             currency: price.currency,
           })
@@ -609,23 +487,23 @@ class TgController {
           break
 
         case 'reg_tarif_welcome':
-          this.cache.reg[chatId].code = 'welcome'
+          const registration = CacheService.getReg(chatId)
+          registration.code = 'welcome'
           incrementRegistrationStep()
           break
 
         case 'reg_confirm':
           incrementRegistrationStep()
-          delete this.cache.reg[chatId]
+          CacheService.clearReg(chatId)
           break
 
         case 'reg_start':
-          this.createCacheReg(chatId, cb.from?.first_name)
-          TgService.start(chatId, this.cache.reg[chatId])
+          TgService.start(chatId)
           break
 
         /* TARIF */
         case 'tarif_add_price':
-          this.cache.tarif[chatId].step = 9
+          CacheService.getTarif(chatId).step = 9
           incrementTarifStep()
           break
 
@@ -633,26 +511,28 @@ class TgController {
           const success = await createTarif()
           if (success) {
             incrementTarifStep()
-            delete this.cache.tarif[chatId]
-            delete this.cache.price[chatId]
+            CacheService.clearTarif(chatId)
+            CacheService.clearPrice(chatId)
           }
           break
 
         case 'tarif_add_new':
-          this.createCacheTarif(chatId)
+          CacheService.clearTarif(chatId)
           this.tarif(chatId, '/tarif')
           break
 
         /* CODE */
         case 'code_add_new':
-          this.createCacheCode(chatId)
+          CacheService.clearCode(chatId)
           this.code(chatId, '/code')
           break
 
         case 'code_confirm':
-          this.cache.code[chatId].step++
-          await TgService.createCode(chatId, this.cache.code[chatId])
-          delete this.cache.code[chatId]
+          const code = CacheService.getCode(chatId)
+
+          code.step++
+          await TgService.createCode(chatId)
+          CacheService.clearCode(chatId)
           break
 
         /* SHOW CASE */
@@ -669,8 +549,6 @@ class TgController {
           break
 
         case 'show_settings':
-          this.createCacheContext(chatId)
-          this.createCacheSettings(chatId)
           TgService.settings(chatId)
           break
 
@@ -702,29 +580,22 @@ class TgController {
 
         /* SETTINGS BUTTOBS */
         case 'settings_service_info':
-          if (!this.cache.context[chatId]) {
-            this.createCacheContext(chatId)
-          }
-
-          this.cache.context[chatId].updatedAt = Date.now()
-          this.cache.context[chatId].service = true
+          context.updatedAt = Date.now()
+          context.service = true
           TgService.sendQueryInput(chatId)
           break
 
         case 'tarifs_send_code':
-          if (!this.cache.settings[chatId]) {
-            this.createCacheSettings(chatId)
-          }
-
-          this.cache.settings[chatId].updatedAt = Date.now()
-          this.cache.settings[chatId].promo = true
+          settings.updatedAt = Date.now()
+          settings.promo = true
 
           TgService.sendCodeInput(chatId)
 
         default:
           /* REGISTRATION SELECT LANGUAGE */
           if (cb.data?.startsWith('reg_lang_')) {
-            this.cache.reg[chatId].language = cb.data.replace('reg_lang_', '') as Language
+            const registration = CacheService.getReg(chatId)
+            registration.language = cb.data.replace('reg_lang_', '') as Language
             incrementRegistrationStep()
             return
           }
@@ -732,36 +603,41 @@ class TgController {
           /* TARIF TYPE */
           if (cb.data?.startsWith('tarif_type_')) {
             const type = cb.data.replace('tarif_type_', '') as TarifType
-            this.cache.tarif[chatId].type = type
+            CacheService.getTarif(chatId).type = type
             incrementTarifStep()
             return
           }
 
           /* TARIF DURATION */
           if (cb.data?.startsWith('tarif_duration_')) {
-            this.cache.tarif[chatId].duration = parseInt(cb.data.replace('tarif_duration_', ''))
+            CacheService.getTarif(chatId).duration = parseInt(cb.data.replace('tarif_duration_', ''))
             incrementTarifStep()
             return
           }
 
           /* TARIF ID AND NAME */
           if (cb.data?.startsWith('code_tarif_')) {
-            this.cache.code[chatId].tarifName = getQueryName(cb.data)
-            this.cache.code[chatId].tarifId = getQueryId(cb.data)
-            this.cache.code[chatId].step++
-            TgService.createCode(chatId, this.cache.code[chatId])
+            const code = CacheService.getCode(chatId)
+
+            code.tarifName = getQueryName(cb.data)
+            code.tarifId = getQueryId(cb.data)
+            code.step++
+            TgService.createCode(chatId)
             return
           }
 
           /* TARIF CURRENCY */
           if (cb.data?.startsWith('tarif_currency_')) {
+            const { prices } = CacheService.getPrice(chatId)
             const currency = cb.data.replace('tarif_currency_', '') as Currency
-            this.cache.price[chatId].prices[this.cache.price[chatId].prices.length] = {
+
+            prices[prices.length] = {
               currency,
               value: 0,
               updatedAt: Date.now(),
             }
-            this.cache.tarif[chatId].currency = currency
+
+            CacheService.getTarif(chatId).currency = currency
             incrementTarifStep()
             return
           }
@@ -784,7 +660,7 @@ class TgController {
           if (cb.data?.startsWith('settings_random_model_')) {
             const model = getQueryName(cb.data) as RandomModels
 
-            this.cache.settings[chatId].randomModel.model = model
+            settings.randomModel.model = model
 
             if (cb.data.startsWith('settings_random_model_both_')) {
               await TgService.sendRandomValues(chatId, 'temperature', getQueryId(cb.data))
@@ -799,24 +675,25 @@ class TgController {
             const model = getRandomModelName(cb.data) as RandomModels
             const value = getRandomModelValue(cb.data)
 
-            if (this.cache.settings[chatId].randomModel.model === 'both') {
-              switch (this.cache.settings[chatId].randomModel.step) {
+            if (settings.randomModel.model === 'both') {
+              switch (settings.randomModel.step) {
                 case 1:
-                  this.cache.settings[chatId].randomModel.step++
-                  this.cache.settings[chatId].randomModel.temperature = value
+                  settings.randomModel.step++
+                  settings.randomModel.temperature = value
                   await TgService.sendRandomValues(chatId, 'topP', getQueryId(cb.data))
                   break
                 case 2:
-                  this.cache.settings[chatId].randomModel.topP = value
-                  TgService.changeRandomModel(chatId, getQueryId(cb.data), this.cache.settings[chatId].randomModel)
+                  settings.randomModel.topP = value
+                  TgService.changeRandomModel(chatId, getQueryId(cb.data), settings.randomModel)
                   break
               }
               return
             }
 
-            this.cache.settings[chatId].randomModel.model = model
-            this.cache.settings[chatId].randomModel.value = value
-            await TgService.changeRandomModel(chatId, getQueryId(cb.data), this.cache.settings[chatId].randomModel)
+            settings.randomModel.model = model
+            settings.randomModel.value = value
+            await TgService.changeRandomModel(chatId, getQueryId(cb.data), settings.randomModel)
+            await CacheService.updateUser(chatId)
             return
           }
 
@@ -827,12 +704,8 @@ class TgController {
 
           /* CHANGE NAME */
           if (cb.data?.startsWith('settings_name_')) {
-            if (!this.cache.settings[chatId]) {
-              this.createCacheSettings(chatId)
-            }
-
-            this.cache.settings[chatId].updatedAt = Date.now()
-            this.cache.settings[chatId].name = true
+            settings.updatedAt = Date.now()
+            settings.name = true
 
             TgService.sendNameChoice(chatId, getToggleValue(cb.data))
             return
@@ -840,29 +713,28 @@ class TgController {
 
           /* CHANGE CONTEXT LENGTH */
           if (cb.data?.startsWith('context_change_length_')) {
-            if (!this.cache.context[chatId]) {
-              this.createCacheContext(chatId)
-            }
-
-            this.cache.context[chatId].updatedAt = Date.now()
-            this.cache.context[chatId].length = true
+            context.updatedAt = Date.now()
+            context.length = true
 
             TgService.sendContextLengthChoise(chatId, getContextValue(cb.data), getContextId(cb.data))
           }
 
           if (cb.data?.startsWith('context_length_')) {
             TgService.changeContextLength(chatId, getContextValue(cb.data), getContextId(cb.data))
+            await CacheService.updateUser(chatId)
             return
           }
 
           /* TOGGLE */
           if (cb.data?.startsWith('settings_lang_')) {
             TgService.sendLanguages(chatId, getQueryId(cb.data))
+            await CacheService.updateUser(chatId)
             return
           }
 
           if (cb.data?.startsWith('toggle_language_')) {
             await TgService.languageToggle(chatId, getToggleId(cb.data), getToggleValue(cb.data) as Language)
+            await CacheService.updateUser(chatId)
             return
           }
 
@@ -871,13 +743,15 @@ class TgController {
               chatId,
               getToggleId(cb.data),
               getToggleValue(cb.data),
-              !!(this.cache.settings[chatId] || this.cache.context[chatId]),
+              !!(settings || context),
             )
+            await CacheService.updateUser(chatId)
             return
           }
 
           if (cb.data.startsWith('toggle_service_info_')) {
             await TgService.serviceInfoToggle(chatId, getToggleId(cb.data), getToggleValue(cb.data))
+            await CacheService.updateUser(chatId)
             return
           }
       }
@@ -888,4 +762,4 @@ class TgController {
   }
 }
 
-export default new TgController(hour)
+export default new TgController()

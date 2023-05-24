@@ -3,6 +3,7 @@ import { ICache, IRandomModel, KeysOfCache, ModeValues } from '../interfaces/cac
 import { FullUser } from '../interfaces/db.js'
 import DBService from './db.js'
 import { isFullUser } from '../const/utils.js'
+import { hour } from '../const/const.js'
 
 class CacheService {
   private readonly cacheExpires
@@ -21,7 +22,9 @@ class CacheService {
   private clearAllCacheById(chatId: number) {
     for (const primaryKey in this.cache) {
       if (primaryKey in this.cache) {
-        delete this.cache[primaryKey as KeysOfCache][chatId]
+        if (primaryKey !== 'user') {
+          delete this.cache[primaryKey as KeysOfCache][chatId]
+        }
       }
     }
   }
@@ -45,15 +48,16 @@ class CacheService {
 
   constructor(cacheExpires: number) {
     this.cacheExpires = cacheExpires
+
     setInterval(() => {
       this.clearCache()
     }, this.cacheExpires)
   }
 
   /* CACHE CREATORS */
-  private createCacheReg(chatId: number, name: string) {
+  private createCacheReg(chatId: number) {
     this.cache.reg[chatId] = {
-      name,
+      name: '',
       code: '',
       language: Language.ru,
       step: 1,
@@ -121,9 +125,7 @@ class CacheService {
     }
 
     if (isFullUser(safeUser)) {
-      this.cache.user[chatId] = { user: safeUser, isExist: true, updatedAt: Date.now() }
-    } else {
-      this.cache.user[chatId] = { user: {} as FullUser, isExist: false, updatedAt: Date.now() }
+      this.cache.user[chatId] = { user: safeUser, updatedAt: Date.now() }
     }
   }
 
@@ -133,42 +135,56 @@ class CacheService {
   }
 
   /* UTILS */
-  private userGuard(chatId: number) {
+  private async userGuard(chatId: number) {
     if (!this.cache.user[chatId]) {
-      this.createCacheUser(chatId)
+      await this.createCacheUser(chatId)
       return
-    } else if (this.cache.user[chatId].isExist) {
-      return
-    } else if (isFullUser(this.cache.user[chatId].user)) {
-      return
-    } else {
-      this.createCacheUser(chatId)
     }
   }
 
   /* GETTERS */
-  getUser(chatId: number) {
-    this.userGuard(chatId)
+  async getUser(chatId: number) {
+    await this.userGuard(chatId)
+    return this.cache.user[chatId]
+  }
 
-    return this.cache.user[chatId].user
+  async getLanguage(chatId: number) {
+    await this.userGuard(chatId)
+    return this.cache.user[chatId].user.settings?.language!
   }
 
   getUnsafeUser(chatId: number) {
-    this.userGuard(chatId)
-
-    const isExists = this.cache.user[chatId].isExist
-
-    if (isExists) {
-      return this.cache.user[chatId].user
-    } else {
-      return null
+    if (this.cache.user[chatId]) {
+      return this.cache.user[chatId]
     }
+    return null
   }
 
-  getLanguage(chatId: number) {
-    this.userGuard(chatId)
-    this.cache.user[chatId]
-    return this.cache.user[chatId].user.settings?.language!
+  getReg(chatId: number) {
+    if (!this.cache.reg[chatId]) {
+      this.createCacheReg(chatId)
+    }
+    return this.cache.reg[chatId]
+  }
+
+  getSettings(chatId: number) {
+    if (!this.cache.settings[chatId]) {
+      this.createCacheSettings(chatId)
+    }
+    return this.cache.settings[chatId]
+  }
+  getUnsafeSettings(chatId: number) {
+    return this.cache.settings[chatId]
+  }
+
+  getContext(chatId: number) {
+    if (!this.cache.context[chatId]) {
+      this.createCacheContext(chatId)
+    }
+    return this.cache.context[chatId]
+  }
+  getUnsafeContext(chatId: number) {
+    return this.cache.context[chatId]
   }
 
   getTarif(chatId: number) {
@@ -177,13 +193,57 @@ class CacheService {
     }
     return this.cache.tarif[chatId]
   }
-  /* SETTERS */
-  updateUser(userOrChatId: FullUser | number) {
-    if (typeof userOrChatId === 'number') {
-      this.userGuard(userOrChatId)
-    }
+  getUnsafeTaruf(chatId: number) {
+    return this.cache.tarif[chatId]
   }
-  /* REMOVERS */
+
+  getPrice(chatId: number) {
+    if (!this.cache.price[chatId]) {
+      this.createCachePrice(chatId)
+    }
+    return this.cache.price[chatId]
+  }
+  getUnsafePrice(chatId: number) {
+    return this.cache.price[chatId]
+  }
+
+  getCode(chatId: number) {
+    if (!this.cache.code[chatId]) {
+      this.createCacheCode(chatId)
+    }
+    return this.cache.code[chatId]
+  }
+  getUnsafeCode(chatId: number) {
+    return this.cache.code[chatId]
+  }
+
+  getAll() {
+    return this.cache
+  }
+  /* SETTERS */
+  async updateUser(chatId: number) {
+    await this.createCacheUser(chatId)
+  }
+
+  /* CLEAR */
+  clearTarif(chatId: number) {
+    delete this.cache.tarif[chatId]
+  }
+  clearPrice(chatId: number) {
+    delete this.cache.price[chatId]
+  }
+  clearReg(chatd: number) {
+    delete this.cache.reg[chatd]
+  }
+  clearCode(chatId: number) {
+    delete this.cache.code[chatId]
+  }
+  clearSettings(chatId: number) {
+    delete this.cache.settings[chatId]
+  }
+  clearAll(chatId: number) {
+    this.clearAllCacheById(chatId)
+  }
 }
 
-export default new CacheService(30000)
+export default new CacheService(hour)

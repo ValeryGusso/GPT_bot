@@ -1,4 +1,3 @@
-import { Currency } from '@prisma/client'
 import { BotCommand } from 'node-telegram-bot-api'
 
 /* TIME */
