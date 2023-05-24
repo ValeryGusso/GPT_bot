@@ -22,31 +22,28 @@ dotenv.config()
 class TgController {
   /* UTILS */
   private async checkAuthAndRegistration(chatId: number, text: string) {
-    const registration = CacheService.getReg(chatId)
-    const unsafeUser = CacheService.getUnsafeUser(chatId)
+    const unsafeUser = await CacheService.getUser(chatId)
 
-    let user: FullUser | null = null
-
-    if (unsafeUser) {
-      user = unsafeUser.user
-      return true
-    }
-
-    if (text !== '/start' && !user) {
+    if (text !== '/start' && !unsafeUser) {
       await TgService.welcome(chatId)
       return false
     }
 
-    if (text === '/start' && !user) {
-      await TgService.start(chatId)
-      return false
+    if (text === '/start') {
+      if (unsafeUser) {
+        await TgService.sendCommandsList(chatId)
+        return true
+      } else {
+        await TgService.start(chatId)
+        return false
+      }
     }
 
-    if (text === '/start' && user) {
-      await TgService.sendCommandsList(chatId)
+    if (unsafeUser) {
       return true
     }
 
+    const registration = CacheService.getReg(chatId)
     if (registration) {
       switch (registration.step) {
         case 1:
@@ -297,7 +294,6 @@ class TgController {
         return
       }
 
-      const { user } = await CacheService.getUser(chatId)
       /** UNAUTH COMMAND HANDLER */
       if (text.startsWith('/')) {
         /* SHOW MENU */
@@ -327,15 +323,15 @@ class TgController {
 
       /* CHECK AUTH AND REGISTRATION */
 
-      const checkAuth = this.checkAuthAndRegistration(chatId, text)
+      const checkAuth = await this.checkAuthAndRegistration(chatId, text)
 
-      if (!checkAuth) {
-        await this.sendError(chatId, 'Произошла ошибка авторизации.')
-        return
-      } else {
+      if (checkAuth) {
         CacheService.clearReg(chatId)
+      } else {
+        return
       }
 
+      const { user } = await CacheService.getUser(chatId)
       const code = CacheService.getUnsafeCode(chatId)
       const settings = CacheService.getUnsafeSettings(chatId)
       const context = CacheService.getUnsafeContext(chatId)
@@ -377,7 +373,7 @@ class TgController {
         if (text !== '/start') {
           await TgService.sendMessage(
             chatId,
-            'Неопознанная комманда. Для получения списка всех комманд воспользуйтесь \n/help\nДля вызова меню воспользуйтесь \n/menu',
+            'Неопознанная команда. Для получения списка всех команд воспользуйтесь \n/help\nДля вызова меню воспользуйтесь \n/menu',
           )
         }
         return
@@ -404,8 +400,8 @@ class TgController {
       }
 
       /* SKIPP ALL ACTIONS, SEND QUESTION TO GPT */
-      this.sendError(chatId, 'Всё впорядке')
-      // TgService.sendQuestion(chatId, text)
+      // this.sendError(chatId, 'Всё впорядке')
+      TgService.sendQuestion(chatId, text)
     } catch (err: any) {
       console.log(err)
       this.sendError(chatId, err.message)

@@ -51,7 +51,7 @@ class GPTService {
 
     const res = await this.API.post<GPTResponse>('/v1/chat/completions', options)
 
-    console.log(res.data.choices[0].message.content)
+    // console.log(res.data.choices[0].message.content)
 
     if (res.status === 200) {
       return {
@@ -80,7 +80,7 @@ class GPTService {
 
     const res = await this.API.post<GPTResponse>('/v1/chat/completions', options)
 
-    console.log(res.data.choices[0].message.content)
+    // console.log(res.data.choices[0].message.content)
 
     if (res.status === 200) {
       return {
