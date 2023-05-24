@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "npx nodemon",
-    "build": "npx tsc",
+    "build": "npm i && npx tsc",
     "start": "node build/index.js",
     "lint": "npx eslint ./src",
     "fix": "npx eslint ./src --fix"
