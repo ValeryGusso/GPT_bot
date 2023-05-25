@@ -427,8 +427,8 @@ class TgController {
 
     try {
       /* UTILS */
+      const registration = CacheService.getReg(chatId)
       const incrementRegistrationStep = () => {
-        const registration = CacheService.getReg(chatId)
         registration.updatedAt = Date.now()
         registration.step++
         TgService.start(chatId)
@@ -476,14 +476,16 @@ class TgController {
         return true
       }
 
+      // const registration = CacheService.getReg(chatId)
       switch (cb.data) {
         /* REGISTRATION */
         case 'reg_skip_name':
+          registration.name = cb.from.first_name
           incrementRegistrationStep()
           break
 
         case 'reg_tarif_welcome':
-          const registration = CacheService.getReg(chatId)
+          // const registration = CacheService.getReg(chatId)
           registration.code = 'welcome'
           incrementRegistrationStep()
           break
