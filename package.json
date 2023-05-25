@@ -1,18 +1,18 @@
 {
-  "name": "back",
+  "name": "GPTBot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Telegram bot powered by chatGPT OpenAI",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "dev": "npx nodemon",
-    "build": "npm i && npx tsc",
+    "build": "npx tsc",
     "start": "node build/index.js",
     "lint": "npx eslint ./src",
     "fix": "npx eslint ./src --fix"
   },
   "keywords": [],
-  "author": "",
+  "author": "Gusso",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^18.11.14",
