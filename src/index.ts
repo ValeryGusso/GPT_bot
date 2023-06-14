@@ -4,7 +4,7 @@ import TgService from './services/tg.js'
 
 const bot = TgService.getBot()
 
-bot.setMyCommands(commands)
+bot.setMyCommands(commands('en'))
 
 bot.on('message', async (msg) => {
   TgController.message(msg)

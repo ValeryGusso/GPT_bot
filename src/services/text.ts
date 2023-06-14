@@ -1,12 +1,148 @@
 import { Language } from '@prisma/client'
 
 class TextService {
-  template(lang: Language) {
+  /* BUTTONS */
+  tarifsButton(lang: Language) {
     switch (lang) {
       case 'ru':
-        return ''
+        return 'Тарифы 💳'
       case 'en':
-        return ''
+        return 'Tarifs 💳'
+    }
+  }
+  aboutButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'О боте ℹ️'
+      case 'en':
+        return 'About ℹ️'
+    }
+  }
+  settingsButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Настройки ⚙️'
+      case 'en':
+        return 'Settings ⚙️'
+    }
+  }
+  menuButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Меню 📋'
+      case 'en':
+        return 'Menu 📋'
+    }
+  }
+  contactButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Связаться со мной'
+      case 'en':
+        return 'Contact me'
+    }
+  }
+  chatButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Начать чат ✉️'
+      case 'en':
+        return 'Start chat ✉️'
+    }
+  }
+  resetContextButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Сбросить контекст  🔄'
+      case 'en':
+        return 'Reset context  🔄'
+    }
+  }
+  offContextButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Отключить контекст'
+      case 'en':
+        return 'Disable context'
+    }
+  }
+  onContextButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Включить контекст'
+      case 'en':
+        return 'Enable сontext'
+    }
+  }
+  startButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Начать 🚀'
+      case 'en':
+        return 'Start 🚀'
+    }
+  }
+  regButton(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Зарегистрироваться! 🚀'
+      case 'en':
+        return 'Registration 🚀'
+    }
+  }
+
+  /* TITLES */
+  menuTitle(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Меню'
+      case 'en':
+        return 'Menu'
+    }
+  }
+  /* COMMANDS */
+  startCommand(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Для начала использования бота воспользуйся командой /start или же нажми на соответствующую кнопку!'
+      case 'en':
+        return 'To start this bot, use the /start command or click on the appropriate button!'
+    }
+  }
+  commandsHeader(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return 'Вот список всех доступных комманд:\n'
+      case 'en':
+        return 'All available commands:\n'
+    }
+  }
+  commandsFooter(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return '\nИли, ты можешь выбрать одно из наиболее популярных действий нажатием кнопки.'
+      case 'en':
+        return '\nOr, you can choose one of the most popular actions by pressing a button.'
+    }
+  }
+  commandsList(lang: Language) {
+    switch (lang) {
+      case 'ru':
+        return `\n/start  - Начать работу с ботом
+        \n/menu  - Меню
+        \n/settings - Настройки
+        \n/info - Информация о боте
+        \n/about - О разработчике
+        \n/chat - Начать чат
+        \n/reset - Сбросить контекст\n`
+      case 'en':
+        return `\n/start  - Start
+        \n/menu  - Menu
+        \n/settings - Settings
+        \n/info - More information
+        \n/about - About me
+        \n/chat - Start chat
+        \n/reset - Reset context\n`
     }
   }
   about(lang: Language) {
@@ -14,7 +150,7 @@ class TextService {
       case 'ru':
         return 'Рад приветствовать тебя в своём боте!\nИдея создания этого бота пришла в голову совершенно случайно, когда мне стало лень каждый раз включать/выключать впн, когда необходимо воспользоваться оригинальным ChatGPT, поэтому я полез в телеграм и принялся искать уже готового бота, хоть и с небольшими лимитами, но мне хватило бы и этого. Каким же было удивление, когда кроме просьб подписаться не десяток сообществ, реферальных систем и рекламы всякого говна, я ничего не обраружил. А почему бы не сделать нормально? Вот и сделал. Никакой рекламы, сомнительных ссылок и "пригласи друга получи ещё 10 запросов" тут не будет. Максимально открытая система использования, стоимость запроса в openAI рассчитывается из количества токенов. У меня тоже. Всё очень просто, не правда ли?\nЕсли нужен новый тариф, закончились лимиты, или возникли какие-нибудь вопросы, то готов со всем помочь @gusso\nСказать спасибо можно сюда 2200 7004 7065 2297 :)'
       case 'en':
-        return ''
+        return `Glad to welcome you to my bot! \nThe idea of creating this bot came to me completely by chance when I got tired of turning on/off my VPN every time I needed to use the original ChatGPT. So, I went to Telegram and started looking for an existing bot, even with some limitations, but that would have been enough for me. Imagine my surprise when, in addition to requests to subscribe to dozens of communities, referral systems, and advertisements for all sorts of crap, I found nothing. Why not do it properly? That's what I did. No advertising, dubious links, or "invite a friend and get 10 more requests" here. The system is as open as possible, and the cost of a request to openAI is calculated based on the number of tokens. Mine too. It's all very simple, isn't it? If you need a new tariff, have run out of limits, or have any questions, I'm ready to help @gusso. \nYou can say thank you here 2200 7004 7065 2297 :)`
     }
   }
   info(lang: Language) {

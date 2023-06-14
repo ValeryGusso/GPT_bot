@@ -3,7 +3,7 @@ import dotenv from 'dotenv'
 import TgService from '../services/tg.js'
 import DBService from '../services/db.js'
 import CacheService from '../services/cache.js'
-import { CreatePriceArguments, FullUser } from '../interfaces/db.js'
+import { CreatePriceArguments } from '../interfaces/db.js'
 import { Currency, Language, RandomModels, TarifType } from '@prisma/client'
 import {
   getContextId,
@@ -14,7 +14,6 @@ import {
   getRandomModelValue,
   getToggleId,
   getToggleValue,
-  isFullUser,
 } from '../const/utils.js'
 
 dotenv.config()

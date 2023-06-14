@@ -148,9 +148,9 @@ class CacheService {
     return this.cache.user[chatId]
   }
 
-  async getLanguage(chatId: number) {
-    await this.userGuard(chatId)
-    return this.cache.user[chatId].user.settings?.language!
+  getLanguage(chatId: number) {
+    console.log(this.cache.user)
+    return this.cache.user[chatId]?.user.settings?.language || 'ru'
   }
 
   getUnsafeUser(chatId: number) {
